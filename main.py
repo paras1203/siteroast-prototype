@@ -24,10 +24,29 @@ import subprocess
 try:
     # Check if running on Streamlit Cloud (Linux)
     if sys.platform == "linux":
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-        subprocess.run(["playwright", "install-deps", "chromium"], check=True)
+        # Install chromium browser (non-blocking, don't fail if already installed)
+        result = subprocess.run(
+            ["playwright", "install", "chromium"], 
+            capture_output=True, 
+            text=True,
+            timeout=120
+        )
+        if result.returncode != 0:
+            print(f"Playwright install warning: {result.stderr[:200]}")
+        
+        # Install system dependencies (non-blocking)
+        result = subprocess.run(
+            ["playwright", "install-deps", "chromium"], 
+            capture_output=True, 
+            text=True,
+            timeout=120
+        )
+        if result.returncode != 0:
+            print(f"Playwright deps warning: {result.stderr[:200]}")
+except subprocess.TimeoutExpired:
+    print("Browser install timed out (may already be installed)")
 except Exception as e:
-    print(f"Browser Install Error: {e}")
+    print(f"Browser Install Error (non-critical): {str(e)[:200]}")
 
 # Fix Windows console encoding for Unicode characters
 if sys.platform == 'win32':
@@ -52,9 +71,30 @@ if env_path.exists():
 if env_path_default.exists():
     load_dotenv(env_path_default, override=False)  # Don't override if .env.local already set it
 
+def get_api_key():
+    """
+    Get API key from Streamlit secrets (for cloud) or environment variables (for local).
+    Returns the API key string or None if not found.
+    """
+    # First try Streamlit secrets (for Streamlit Cloud)
+    try:
+        if hasattr(st, 'secrets') and 'GOOGLE_GENAI_API_KEY' in st.secrets:
+            api_key = st.secrets['GOOGLE_GENAI_API_KEY']
+            if api_key:
+                return api_key.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    
+    # Fallback to environment variable (for local development)
+    api_key = os.getenv("GOOGLE_GENAI_API_KEY")
+    if api_key:
+        return api_key.strip().strip('"').strip("'")
+    
+    return None
+
 # Page Configuration
 st.set_page_config(
-    page_title="SiteRoast.ai - Brutal Conversion Audits",
+    page_title="SiteRoast - Brutal Conversion Audits",
     page_icon="🔥",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1217,13 +1257,9 @@ def compile_roast(images, text_content, html_source, progress_manager=None):
     Manager function: Orchestrates the 3 workers and merges their unified JSON outputs
     into the final God Mode JSON schema with scoring, roast summary, and aggregation.
     """
-    api_key = os.getenv("GOOGLE_GENAI_API_KEY")
+    api_key = get_api_key()
     if not api_key:
-        raise ValueError("GOOGLE_GENAI_API_KEY not found in environment. Please add it to .env.local file.")
-    
-    api_key = api_key.strip().strip('"').strip("'")
-    if not api_key:
-        raise ValueError("GOOGLE_GENAI_API_KEY is empty. Please check your .env.local file.")
+        raise ValueError("GOOGLE_GENAI_API_KEY not found. For Streamlit Cloud, add it to Secrets. For local, add it to .env.local file.")
     
     try:
         genai.configure(api_key=api_key)
@@ -2445,9 +2481,23 @@ def generate_heatmap(image_pil):
     Returns: PIL Image with heatmap overlay
     """
     try:
+        # Ensure image is RGB
+        if image_pil.mode != 'RGB':
+            image_pil = image_pil.convert('RGB')
+        
         # Convert PIL to CV2
-        img_array = np.array(image_pil.convert('RGB'))
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        img_array = np.array(image_pil)
+        
+        # Check if image is valid
+        if img_array.size == 0:
+            safe_print("[WARNING] Empty image array, returning original")
+            return image_pil
+        
+        # Convert to grayscale
+        if len(img_array.shape) == 3:
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = img_array
         
         # Apply Canny edge detection to find high-contrast areas (bright spots)
         edges = cv2.Canny(gray, 50, 150)
@@ -2459,19 +2509,20 @@ def generate_heatmap(image_pil):
         heatmap = cv2.normalize(blurred, None, 0, 255, cv2.NORM_MINMAX)
         
         # Apply color map (hot areas = red/yellow, cold = blue/green)
-        heatmap_colored = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+        heatmap_colored = cv2.applyColorMap(heatmap.astype(np.uint8), cv2.COLORMAP_JET)
         
         # Convert back to PIL
         heatmap_pil = Image.fromarray(cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB))
         
         # Blend with original (50% opacity for overlay effect)
-        result = Image.blend(image_pil.convert('RGB'), heatmap_pil, alpha=0.5)
+        result = Image.blend(image_pil, heatmap_pil, alpha=0.5)
         
         return result
     except Exception as e:
         error_msg = safe_error_message(e)
-        print(f"[ERROR] Heatmap generation failed: {error_msg}")
-        return image_pil  # Return original if heatmap fails
+        safe_print(f"[ERROR] Heatmap generation failed: {error_msg}")
+        # Return original image if heatmap fails
+        return image_pil.convert('RGB') if image_pil.mode != 'RGB' else image_pil
 
 class PDFReport(FPDF):
     """
@@ -3564,15 +3615,13 @@ def main():
     # Hero Section (Centered Layout)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown('<h1 class="main-title">🔥 SiteRoast.ai</h1>', unsafe_allow_html=True)
+        st.markdown('<h1 class="main-title">🔥 SiteRoast</h1>', unsafe_allow_html=True)
         st.markdown('<p class="sub-header">The Brutal Conversion Audit</p>', unsafe_allow_html=True)
         
         # Check API key (with quote stripping)
-        api_key_check = os.getenv("GOOGLE_GENAI_API_KEY")
-        if api_key_check:
-            api_key_check = api_key_check.strip().strip('"').strip("'")
+        api_key_check = get_api_key()
         if not api_key_check:
-            st.warning("[!] API Key not found - check .env.local file")
+            st.warning("[!] API Key not found - For Streamlit Cloud: add GOOGLE_GENAI_API_KEY to Secrets. For local: add it to .env.local file")
         
         # URL input field
         site_url = st.text_input("Enter the URL below", placeholder="https://example.com", key="site_url")
@@ -3875,8 +3924,8 @@ def render_main_audit_dashboard(roast_data):
                     first_img.save(screenshot_path)
                 
                 radar_chart_path = st.session_state.get("radar_chart_path", None)
-                site_url = st.session_state.get("site_url", None)
-                stitched_heatmap_path = st.session_state.get("stitched_heatmap_path", None)
+                site_url = st.session_state.get("audit_url", st.session_state.get("site_url", None))
+                stitched_heatmap_path = st.session_state.get("stitched_heatmap_path", st.session_state.get("heatmap_path", None))
                 
                 pdf_bytes = generate_pdf_report(roast_data, screenshot_path, site_url, radar_chart_path, stitched_heatmap_path)
                 st.download_button(
@@ -4030,14 +4079,56 @@ def render_main_audit_dashboard(roast_data):
         # Show heatmap of ONLY the first screenshot (Hero section)
         st.markdown("**Visual Saliency - First Impression**")
         if "captured_images" in st.session_state and st.session_state.captured_images:
-            hero_image = st.session_state.captured_images[0]
-            hero_heatmap = generate_heatmap(hero_image)
-            st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+            try:
+                hero_image = st.session_state.captured_images[0]
+                hero_heatmap = generate_heatmap(hero_image)
+                
+                # Save heatmap to temp directory for PDF
+                temp_dir = os.path.join(os.getcwd(), "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+                heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
+                hero_heatmap.save(heatmap_path)
+                st.session_state.heatmap_path = heatmap_path
+                
+                # Create stitched heatmap for PDF (if multiple images)
+                if len(st.session_state.captured_images) > 1:
+                    try:
+                        heatmap_images = [generate_heatmap(img) for img in st.session_state.captured_images[:3]]
+                        stitched_heatmap = stitch_images(heatmap_images, max_images=3)
+                        if stitched_heatmap:
+                            stitched_heatmap_path = os.path.join(temp_dir, f"stitched_heatmap_{int(time.time())}.png")
+                            stitched_heatmap.save(stitched_heatmap_path)
+                            st.session_state.stitched_heatmap_path = stitched_heatmap_path
+                    except Exception as stitch_error:
+                        safe_print(f"[WARNING] Stitched heatmap failed: {safe_error_message(str(stitch_error))}")
+                        st.session_state.stitched_heatmap_path = heatmap_path  # Fallback to single heatmap
+                else:
+                    st.session_state.stitched_heatmap_path = heatmap_path
+                
+                st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+            except Exception as e:
+                safe_print(f"[ERROR] Heatmap generation failed: {safe_error_message(str(e))}")
+                st.warning("Heatmap generation failed. Showing original screenshot.")
+                st.image(hero_image, caption="Hero Section (Heatmap unavailable)", use_container_width=True)
         elif "uploaded_files" in st.session_state and st.session_state.uploaded_files:
-            first_file = st.session_state.uploaded_files[0]
-            hero_image = Image.open(first_file)
-            hero_heatmap = generate_heatmap(hero_image)
-            st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+            try:
+                first_file = st.session_state.uploaded_files[0]
+                hero_image = Image.open(first_file)
+                hero_heatmap = generate_heatmap(hero_image)
+                
+                # Save heatmap for PDF
+                temp_dir = os.path.join(os.getcwd(), "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+                heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
+                hero_heatmap.save(heatmap_path)
+                st.session_state.heatmap_path = heatmap_path
+                st.session_state.stitched_heatmap_path = heatmap_path
+                
+                st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+            except Exception as e:
+                safe_print(f"[ERROR] Heatmap generation failed: {safe_error_message(str(e))}")
+                st.warning("Heatmap generation failed. Showing original screenshot.")
+                st.image(hero_image, caption="Hero Section (Heatmap unavailable)", use_container_width=True)
         else:
             st.info("No screenshot available")
         st.markdown('</div>', unsafe_allow_html=True)

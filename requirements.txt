@@ -10,5 +10,6 @@ pandas
 pillow
 python-dotenv
 plotly
+kaleido
 opencv-python
 numpy
