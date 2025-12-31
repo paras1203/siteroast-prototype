@@ -8,3 +8,7 @@ fake-useragent
 altair
 pandas
 pillow
+python-dotenv
+plotly
+opencv-python
+numpy
