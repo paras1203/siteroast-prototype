@@ -3347,6 +3347,20 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
     Returns:
         PDF bytes
     """
+    # Validate input data - return error PDF if empty
+    if not json_data or not isinstance(json_data, dict):
+        safe_print("[ERROR] PDF generation: json_data is None or empty")
+        try:
+            error_pdf = PDFReport()
+            error_pdf.add_page()
+            error_pdf.set_font("Helvetica", "B", 16)
+            error_pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+            error_pdf.set_font("Helvetica", "", 11)
+            error_pdf.cell(0, 10, "Error: No audit data available to generate report.", ln=True, align="C")
+            return error_pdf.output(dest='S')
+        except:
+            return b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 0\ntrailer\n<<\n/Size 0\n>>\nstartxref\n0\n%%EOF'
+    
     try:
         pdf = PDFReport()
         
@@ -3415,138 +3429,141 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
             pdf.cell(0, 10, "Visual Analysis", ln=True, align="C")
             pdf.set_font("Helvetica", "I", 12)
             pdf.cell(0, 10, "[Heatmap Not Available]", ln=True, align="C")
-    
-    # Quick Wins section
-    quick_wins = json_data.get('quick_wins', [])
-    if quick_wins and len(quick_wins) > 0:
-        pdf.add_quick_wins(quick_wins)
-    
-    # --- PAGE 3: VISUAL CONTEXT (Hero Shot) ---
-    if screenshot_path and os.path.exists(screenshot_path):
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.set_text_color(*pdf.primary_color)
-        pdf.cell(pdf.usable_width, 10, "Landing Page Screenshot", 0, 1, 'L')
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(5)
         
-        try:
-            # Open image to get dimensions
-            from PIL import Image as PILImage
-            img = PILImage.open(screenshot_path)
-            img_width, img_height = img.size
-            
-            # Calculate dimensions: Make it double height (or as much as fits)
-            # A4 height = 297mm, margins = 40mm total, title space ≈ 30mm
-            # Usable height ≈ 227mm
-            max_height_mm = 220  # Leave some margin
-            
-            # Calculate aspect ratio
-            aspect_ratio = img_width / img_height
-            
-            # Start with full width
-            display_width = pdf.usable_width
-            display_height = display_width / aspect_ratio
-            
-            # Double the height (or use max available)
-            target_height = min(max_height_mm, display_height * 2)
-            
-            # If target is taller, adjust width to maintain aspect ratio
-            if target_height > display_height:
-                display_height = target_height
-                display_width = display_height * aspect_ratio
-                # If wider than usable width, scale down
-                if display_width > pdf.usable_width:
-                    scale = pdf.usable_width / display_width
-                    display_width = pdf.usable_width
-                    display_height = display_height * scale
-            
-            # Center horizontally if narrower than usable width
-            x_offset = 20 + (pdf.usable_width - display_width) / 2 if display_width < pdf.usable_width else 20
-            
-            # Place image with proper spacing (y position is already set by pdf.ln(8))
-            current_y = pdf.get_y()
-            pdf.image(screenshot_path, x=x_offset, y=current_y, w=display_width)
-        except Exception as e:
-            pdf.set_font("Arial", '', 10)
-            error_msg = str(e)[:150]
-            pdf.multi_cell(pdf.usable_width, 8, f"Note: Could not load screenshot: {error_msg}", 0, 'L')
+        # Quick Wins section
+        quick_wins = json_data.get('quick_wins', [])
+        if quick_wins and len(quick_wins) > 0:
+            try:
+                pdf.add_quick_wins(quick_wins)
+            except Exception as e:
+                safe_print(f"[ERROR] Quick wins section failed: {safe_error_message(str(e))}")
     
-    # --- PAGE 4+: ELEMENT-BY-ELEMENT AUDIT (if available) ---
-    audit_items = json_data.get('audit_items', [])
-    if audit_items and len(audit_items) > 0:
-        # Split audit_items into pages (3-4 per page)
-        items_per_page = 3
-        for page_start in range(0, len(audit_items), items_per_page):
+        # --- PAGE 3: VISUAL CONTEXT (Hero Shot) ---
+        if screenshot_path and os.path.exists(screenshot_path):
             pdf.add_page()
-            if page_start == 0:
-                pdf.set_font("Arial", 'B', 18)
-                pdf.set_text_color(*pdf.primary_color)
-                pdf.cell(pdf.usable_width, 12, "Element-by-Element Audit", 0, 1, 'L')
+            pdf.set_font("Arial", 'B', 16)
+            pdf.set_text_color(*pdf.primary_color)
+            pdf.cell(pdf.usable_width, 10, "Landing Page Screenshot", 0, 1, 'L')
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(5)
+            
+            try:
+                # Open image to get dimensions
+                from PIL import Image as PILImage
+                img = PILImage.open(screenshot_path)
+                img_width, img_height = img.size
+                
+                # Calculate dimensions: Make it double height (or as much as fits)
+                # A4 height = 297mm, margins = 40mm total, title space ≈ 30mm
+                # Usable height ≈ 227mm
+                max_height_mm = 220  # Leave some margin
+                
+                # Calculate aspect ratio
+                aspect_ratio = img_width / img_height
+                
+                # Start with full width
+                display_width = pdf.usable_width
+                display_height = display_width / aspect_ratio
+                
+                # Double the height (or use max available)
+                target_height = min(max_height_mm, display_height * 2)
+                
+                # If target is taller, adjust width to maintain aspect ratio
+                if target_height > display_height:
+                    display_height = target_height
+                    display_width = display_height * aspect_ratio
+                    # If wider than usable width, scale down
+                    if display_width > pdf.usable_width:
+                        scale = pdf.usable_width / display_width
+                        display_width = pdf.usable_width
+                        display_height = display_height * scale
+                
+                # Center horizontally if narrower than usable width
+                x_offset = 20 + (pdf.usable_width - display_width) / 2 if display_width < pdf.usable_width else 20
+                
+                # Place image with proper spacing (y position is already set by pdf.ln(8))
+                current_y = pdf.get_y()
+                pdf.image(screenshot_path, x=x_offset, y=current_y, w=display_width)
+            except Exception as e:
+                pdf.set_font("Arial", '', 10)
+                error_msg = str(e)[:150]
+                pdf.multi_cell(pdf.usable_width, 8, f"Note: Could not load screenshot: {error_msg}", 0, 'L')
+        
+        # --- PAGE 4+: ELEMENT-BY-ELEMENT AUDIT (if available) ---
+        audit_items = json_data.get('audit_items', [])
+        if audit_items and len(audit_items) > 0:
+            # Split audit_items into pages (3-4 per page)
+            items_per_page = 3
+            for page_start in range(0, len(audit_items), items_per_page):
+                pdf.add_page()
+                if page_start == 0:
+                    pdf.set_font("Arial", 'B', 18)
+                    pdf.set_text_color(*pdf.primary_color)
+                    pdf.cell(pdf.usable_width, 12, "Element-by-Element Audit", 0, 1, 'L')
+                    pdf.set_text_color(0, 0, 0)
+                    pdf.ln(3)
+                
+                page_items = audit_items[page_start:page_start + items_per_page]
+                for item in page_items:
+                    # Use the new professional audit_card method
+                    pdf.audit_card(item)
+                    
+                    # Add separator line between cards
+                    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+                    pdf.ln(3)
+        
+        # --- PAGE N+: DEEP DIVES (God-Tier Schema) ---
+        categories = json_data.get('categories', [])
+        for cat in categories:
+            pdf.add_page()
+            # Title
+            pdf.set_font("Arial", 'B', 16)
+            cat_name = clean_text_for_pdf(cat.get('name', 'Unknown'))[:80]
+            cat_score = cat.get('score', 0)
+            pdf.multi_cell(pdf.usable_width, 10, f"{cat_name} (Score: {cat_score}/100)", 0, 'L')
+            
+            # Verdict & Impact
+            pdf.set_font("Arial", '', 11)
+            verdict = clean_text_for_pdf(cat.get('verdict', 'Unknown'))[:40]
+            impact = clean_text_for_pdf(cat.get('impact', 'Unknown'))[:40]
+            pdf.multi_cell(pdf.usable_width, 8, f"Verdict: {verdict} | Impact: {impact}", 0, 'L')
+            pdf.ln(4)
+            
+            # What Works
+            what_works = cat.get('what_works', '')
+            if what_works:
+                pdf.set_font("Arial", 'B', 11)
+                pdf.set_text_color(0, 128, 0)  # Green
+                pdf.cell(pdf.usable_width, 8, "What Works:", 0, 1, 'L')
                 pdf.set_text_color(0, 0, 0)
+                pdf.set_font("Arial", '', 10)
+                pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_works)[:400], 0, 'L')
                 pdf.ln(3)
             
-            page_items = audit_items[page_start:page_start + items_per_page]
-            for item in page_items:
-                # Use the new professional audit_card method
-                pdf.audit_card(item)
-                
-                # Add separator line between cards
-                pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+            # What Failed
+            what_failed = cat.get('what_failed', '')
+            if what_failed:
+                pdf.set_font("Arial", 'B', 11)
+                pdf.set_text_color(200, 0, 0)  # Red
+                pdf.cell(pdf.usable_width, 8, "What Failed:", 0, 1, 'L')
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("Arial", '', 10)
+                pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_failed)[:400], 0, 'L')
                 pdf.ln(3)
-    
-    # --- PAGE N+: DEEP DIVES (God-Tier Schema) ---
-    categories = json_data.get('categories', [])
-    for cat in categories:
-        pdf.add_page()
-        # Title
-        pdf.set_font("Arial", 'B', 16)
-        cat_name = clean_text_for_pdf(cat.get('name', 'Unknown'))[:80]
-        cat_score = cat.get('score', 0)
-        pdf.multi_cell(pdf.usable_width, 10, f"{cat_name} (Score: {cat_score}/100)", 0, 'L')
+            
+            # Fix Steps
+            fix_steps = cat.get('fix_steps', [])
+            if fix_steps:
+                pdf.set_font("Arial", 'B', 11)
+                pdf.set_text_color(*pdf.primary_color)
+                pdf.cell(pdf.usable_width, 8, "Fix Steps:", 0, 1, 'L')
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("Arial", '', 10)
+                for i, step in enumerate(fix_steps[:5]):  # Max 5 steps
+                    step_text = clean_text_for_pdf(step)[:300]
+                    pdf.multi_cell(pdf.usable_width, 6, f"{i+1}. {step_text}", 0, 'L')
+                    pdf.ln(2)
         
-        # Verdict & Impact
-        pdf.set_font("Arial", '', 11)
-        verdict = clean_text_for_pdf(cat.get('verdict', 'Unknown'))[:40]
-        impact = clean_text_for_pdf(cat.get('impact', 'Unknown'))[:40]
-        pdf.multi_cell(pdf.usable_width, 8, f"Verdict: {verdict} | Impact: {impact}", 0, 'L')
-        pdf.ln(4)
-        
-        # What Works
-        what_works = cat.get('what_works', '')
-        if what_works:
-            pdf.set_font("Arial", 'B', 11)
-            pdf.set_text_color(0, 128, 0)  # Green
-            pdf.cell(pdf.usable_width, 8, "What Works:", 0, 1, 'L')
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Arial", '', 10)
-            pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_works)[:400], 0, 'L')
-            pdf.ln(3)
-        
-        # What Failed
-        what_failed = cat.get('what_failed', '')
-        if what_failed:
-            pdf.set_font("Arial", 'B', 11)
-            pdf.set_text_color(200, 0, 0)  # Red
-            pdf.cell(pdf.usable_width, 8, "What Failed:", 0, 1, 'L')
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Arial", '', 10)
-            pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_failed)[:400], 0, 'L')
-            pdf.ln(3)
-        
-        # Fix Steps
-        fix_steps = cat.get('fix_steps', [])
-        if fix_steps:
-            pdf.set_font("Arial", 'B', 11)
-            pdf.set_text_color(*pdf.primary_color)
-            pdf.cell(pdf.usable_width, 8, "Fix Steps:", 0, 1, 'L')
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Arial", '', 10)
-            for i, step in enumerate(fix_steps[:5]):  # Max 5 steps
-                step_text = clean_text_for_pdf(step)[:300]
-                pdf.multi_cell(pdf.usable_width, 6, f"{i+1}. {step_text}", 0, 'L')
-                pdf.ln(2)
-    
         # Ensure PDF has at least one page with content
         if pdf.page_no() == 0:
             pdf.add_page()
@@ -3881,8 +3898,8 @@ def main():
                     
                     st.session_state.roast_data = roast_data
                     
-                    # Store first screenshot for PDF
-                    temp_dir = os.path.join(os.getcwd(), "temp")
+                    # Store first screenshot for PDF (use tempfile for cloud compatibility)
+                    temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
                     os.makedirs(temp_dir, exist_ok=True)
                     screenshot_path = os.path.join(temp_dir, f"screenshot_{int(time.time())}.png")
                     images[0].save(screenshot_path)
@@ -3973,7 +3990,7 @@ def render_main_audit_dashboard(roast_data):
             # PDF Download Button
             try:
                 screenshot_path = None
-                temp_dir = os.path.join(os.getcwd(), "temp")
+                temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
                 os.makedirs(temp_dir, exist_ok=True)
                 
                 if "uploaded_files" in st.session_state and st.session_state.uploaded_files:
@@ -4091,7 +4108,7 @@ def render_main_audit_dashboard(roast_data):
                 
                 # Save radar chart as image for PDF (with transparent background)
                 try:
-                    temp_dir = os.path.join(os.getcwd(), "temp")
+                    temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
                     os.makedirs(temp_dir, exist_ok=True)
                     radar_chart_path = os.path.join(temp_dir, f"radar_{int(time.time())}.png")
                     # Save with transparent background
@@ -4145,8 +4162,8 @@ def render_main_audit_dashboard(roast_data):
                 hero_image = st.session_state.captured_images[0]
                 hero_heatmap = generate_heatmap(hero_image)
                 
-                # Save heatmap to temp directory for PDF
-                temp_dir = os.path.join(os.getcwd(), "temp")
+                # Save heatmap to temp directory for PDF (use tempfile for cloud compatibility)
+                temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
                 os.makedirs(temp_dir, exist_ok=True)
                 heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
                 hero_heatmap.save(heatmap_path)
@@ -4178,8 +4195,8 @@ def render_main_audit_dashboard(roast_data):
                 hero_image = Image.open(first_file)
                 hero_heatmap = generate_heatmap(hero_image)
                 
-                # Save heatmap for PDF
-                temp_dir = os.path.join(os.getcwd(), "temp")
+                # Save heatmap for PDF (use tempfile for cloud compatibility)
+                temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
                 os.makedirs(temp_dir, exist_ok=True)
                 heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
                 hero_heatmap.save(heatmap_path)
