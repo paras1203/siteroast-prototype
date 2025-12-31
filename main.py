@@ -3347,44 +3347,74 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
     Returns:
         PDF bytes
     """
-    pdf = PDFReport()
-    
-    # Extract base URL if full URL provided
-    base_url = None
-    if site_url:
+    try:
+        pdf = PDFReport()
+        
+        # Extract base URL if full URL provided
+        base_url = None
+        if site_url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(site_url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else site_url
+            except:
+                base_url = site_url
+        
+        # Prepare metadata for cover page
+        metadata = {
+            'scannedUrl': base_url or site_url or 'N/A',
+            'scannedAt': time.strftime('%B %d, %Y')
+        }
+        
+        # Prepare roast data for executive summary
+        roast_summary = json_data.get('roast_summary') or json_data.get('headline_roast', 'Analysis completed')
+        roast_data = {
+            'broadRoast': roast_summary,
+            'hook': json_data.get('headline_roast', ''),
+            'analysis': json_data.get('overview', {}).get('roastAnalysis', ''),
+            'roastAnalysis': json_data.get('overview', {}).get('roastAnalysis', ''),
+            'executiveSummary': json_data.get('overview', {}).get('executiveSummary', '')
+        }
+        
+        # Get overall score
+        overall_score = json_data.get('overall_score', json_data.get('overview', {}).get('overallScore', 50))
+        
+        # Get detailedAudit for status summary table
+        detailed_audit = json_data.get('detailedAudit', {})
+        
+        # Call new methods in order - with error handling for each section
         try:
-            from urllib.parse import urlparse
-            parsed = urlparse(site_url)
-            base_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else site_url
-        except:
-            base_url = site_url
-    
-    # Prepare metadata for cover page
-    metadata = {
-        'scannedUrl': base_url or site_url or 'N/A',
-        'scannedAt': time.strftime('%B %d, %Y')
-    }
-    
-    # Prepare roast data for executive summary
-    roast_summary = json_data.get('roast_summary') or json_data.get('headline_roast', 'Analysis completed')
-    roast_data = {
-        'broadRoast': roast_summary,
-        'hook': json_data.get('headline_roast', ''),
-        'analysis': json_data.get('overview', {}).get('roastAnalysis', ''),
-        'roastAnalysis': json_data.get('overview', {}).get('roastAnalysis', ''),
-        'executiveSummary': json_data.get('overview', {}).get('executiveSummary', '')
-    }
-    
-    # Get overall score
-    overall_score = json_data.get('overall_score', json_data.get('overview', {}).get('overallScore', 50))
-    
-    # Get detailedAudit for status summary table
-    detailed_audit = json_data.get('detailedAudit', {})
-    
-    # Call new methods in order
-    pdf.add_cover_page(metadata, overall_score)
-    pdf.add_roast_section(roast_data, overall_score, detailed_audit)
-    pdf.add_visuals_section(stitched_heatmap_path)
+            pdf.add_cover_page(metadata, overall_score)
+        except Exception as e:
+            safe_print(f"[ERROR] Cover page failed: {safe_error_message(str(e))}")
+            # Ensure at least one page exists
+            if pdf.page_no() == 0:
+                pdf.add_page()
+                pdf.set_font("Helvetica", "B", 16)
+                pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+        
+        try:
+            pdf.add_roast_section(roast_data, overall_score, detailed_audit)
+        except Exception as e:
+            safe_print(f"[ERROR] Roast section failed: {safe_error_message(str(e))}")
+            # Add fallback content
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(0, 10, "Executive Summary", ln=True)
+            pdf.set_font("Helvetica", "", 11)
+            summary_text = clean_text_for_pdf(str(roast_summary))
+            pdf.multi_cell(0, 6, summary_text[:500])
+        
+        try:
+            pdf.add_visuals_section(stitched_heatmap_path)
+        except Exception as e:
+            safe_print(f"[ERROR] Visuals section failed: {safe_error_message(str(e))}")
+            # Add fallback page
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, "Visual Analysis", ln=True, align="C")
+            pdf.set_font("Helvetica", "I", 12)
+            pdf.cell(0, 10, "[Heatmap Not Available]", ln=True, align="C")
     
     # Quick Wins section
     quick_wins = json_data.get('quick_wins', [])
@@ -3517,30 +3547,62 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                 pdf.multi_cell(pdf.usable_width, 6, f"{i+1}. {step_text}", 0, 'L')
                 pdf.ln(2)
     
-    # pdf.output(dest='S') returns bytes/bytearray directly
-    # Handle encoding errors gracefully (Windows charmap issue)
-    try:
-        pdf_bytes = pdf.output(dest='S')
-    except (UnicodeEncodeError, UnicodeDecodeError) as e:
-        # If encoding fails, use BytesIO buffer which handles encoding better
+        # Ensure PDF has at least one page with content
+        if pdf.page_no() == 0:
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+            pdf.set_font("Helvetica", "", 11)
+            pdf.cell(0, 10, "Report generated successfully", ln=True, align="C")
+        
+        # pdf.output(dest='S') returns bytes/bytearray directly
+        # Handle encoding errors gracefully (Windows charmap issue)
         try:
-            buffer = io.BytesIO()
-            pdf.output(buffer)
-            pdf_bytes = buffer.getvalue()
-        except Exception as e2:
-            # Last resort: log error safely (avoid Unicode in error message)
+            pdf_bytes = pdf.output(dest='S')
+            # Verify PDF is not empty
+            if not pdf_bytes or len(pdf_bytes) < 100:
+                raise ValueError("PDF output is too small, likely empty")
+        except (UnicodeEncodeError, UnicodeDecodeError, ValueError) as e:
+            # If encoding fails, use BytesIO buffer which handles encoding better
             try:
-                error_msg = clean_text_for_pdf(f"PDF generation error: {str(e2)}")
-                st.error(error_msg)
-            except:
-                st.error("PDF generation failed due to encoding error")
-            # Return empty PDF bytes as fallback
-            pdf_bytes = b''
-    
-    # Convert bytearray to bytes if needed (Streamlit download_button expects bytes)
-    if isinstance(pdf_bytes, bytearray):
-        return bytes(pdf_bytes)
-    return pdf_bytes
+                buffer = io.BytesIO()
+                pdf.output(buffer)
+                pdf_bytes = buffer.getvalue()
+                # Verify again
+                if not pdf_bytes or len(pdf_bytes) < 100:
+                    raise ValueError("PDF buffer is too small")
+            except Exception as e2:
+                # Last resort: create a minimal valid PDF
+                safe_print(f"[ERROR] PDF generation failed: {safe_error_message(str(e2))}")
+                try:
+                    # Create a minimal PDF with error message
+                    fallback_pdf = PDFReport()
+                    fallback_pdf.add_page()
+                    fallback_pdf.set_font("Helvetica", "B", 16)
+                    fallback_pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+                    fallback_pdf.set_font("Helvetica", "", 11)
+                    error_msg = clean_text_for_pdf(f"PDF generation encountered an error. Please try again.")
+                    fallback_pdf.multi_cell(0, 6, error_msg)
+                    pdf_bytes = fallback_pdf.output(dest='S')
+                except:
+                    # Absolute last resort - return minimal valid PDF
+                    pdf_bytes = b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 0\ntrailer\n<<\n/Size 0\n>>\nstartxref\n0\n%%EOF'
+        
+        # Convert bytearray to bytes if needed (Streamlit download_button expects bytes)
+        if isinstance(pdf_bytes, bytearray):
+            pdf_bytes = bytes(pdf_bytes)
+        
+        # Final verification
+        if not pdf_bytes or len(pdf_bytes) < 100:
+            safe_print("[ERROR] PDF bytes are empty or too small")
+            # Return minimal valid PDF
+            pdf_bytes = b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 0\ntrailer\n<<\n/Size 0\n>>\nstartxref\n0\n%%EOF'
+        
+        return pdf_bytes
+    except Exception as e:
+        safe_print(f"[CRITICAL ERROR] PDF generation completely failed: {safe_error_message(str(e))}")
+        # Return minimal valid PDF structure
+        return b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 0\ntrailer\n<<\n/Size 0\n>>\nstartxref\n0\n%%EOF'
 
 def validate_url(url):
     """
