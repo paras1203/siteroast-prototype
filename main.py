@@ -1,0 +1,4213 @@
+import streamlit as st
+import google.generativeai as genai
+from PIL import Image, ImageDraw, ImageFilter
+import os
+import json
+import re
+import time
+import random
+from dotenv import load_dotenv
+import pandas as pd
+import plotly.express as px
+from fpdf import FPDF
+import io
+import asyncio
+from playwright.async_api import async_playwright
+import tempfile
+import cv2
+import numpy as np
+import sys
+import pathlib
+import subprocess
+
+# CLOUD FIX: Install Playwright browsers automatically on startup
+try:
+    # Check if running on Streamlit Cloud (Linux)
+    if sys.platform == "linux":
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+        subprocess.run(["playwright", "install-deps", "chromium"], check=True)
+except Exception as e:
+    print(f"Browser Install Error: {e}")
+
+# Fix Windows console encoding for Unicode characters
+if sys.platform == 'win32':
+    try:
+        # Set console to UTF-8 encoding on Windows
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8')
+    except:
+        # If reconfiguration fails, continue without it
+        pass
+
+# Load environment variables from .env.local or .env file
+# Use absolute paths and override=True to ensure variables are loaded
+env_path = pathlib.Path(__file__).parent / '.env.local'
+env_path_default = pathlib.Path(__file__).parent / '.env'
+
+# Load .env.local first (takes precedence), then .env as fallback
+if env_path.exists():
+    load_dotenv(env_path, override=True)
+if env_path_default.exists():
+    load_dotenv(env_path_default, override=False)  # Don't override if .env.local already set it
+
+# Page Configuration
+st.set_page_config(
+    page_title="SiteRoast.ai - Brutal Conversion Audits",
+    page_icon="🔥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for Professional SaaS Look
+css = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    }
+    
+    /* Hide Default Streamlit Elements */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
+    .stDeployButton {display: none !important;}
+    [data-testid="stHeader"] {visibility: hidden !important; height: 0 !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    
+    /* Hero Section Styling */
+    .main-title,
+    h1.main-title,
+    h1#site-roast-ai,
+    h1.main-title#site-roast-ai {
+        text-align: center !important;
+        font-size: 3.2rem !important;
+        font-weight: bold !important;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 25%, #c44569 50%, #8b5cf6 75%, #667eea 100%) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        background-color: transparent !important;
+        margin: 0 auto 0.5rem auto !important;
+        letter-spacing: -0.02em !important;
+        text-shadow: 0 0 30px rgba(102, 126, 234, 0.3) !important;
+        position: relative !important;
+        display: block !important;
+        width: 100% !important;
+        left: 0 !important;
+        right: 0 !important;
+    }
+    
+    /* Remove background glow effect - keep transparent */
+    .main-title::before {
+        display: none !important;
+    }
+    
+    .main-title::after {
+        display: none !important;
+    }
+    .sub-header {
+        text-align: center;
+        font-size: 1.3rem;
+        color: #64748b;
+        margin-bottom: 2rem;
+    }
+    
+    /* Input Field Styling */
+    .stTextInput,
+    [data-testid="stTextInput"] {
+        overflow: visible !important;
+        padding-bottom: 2px !important;
+        margin-bottom: 4px !important;
+    }
+    
+    .stTextInput > div,
+    [data-testid="stTextInput"] > div {
+        overflow: visible !important;
+        padding-bottom: 2px !important;
+        margin-bottom: 2px !important;
+    }
+    
+    .stTextInput > div > div,
+    [data-testid="stTextInput"] > div > div {
+        height: 52px !important;
+        min-height: 52px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        overflow: visible !important;
+        padding: 1px !important;
+        margin: 0 !important;
+    }
+    
+    /* Fix for Streamlit's input wrapper */
+    [data-testid="stTextInput"] > div > div > div {
+        height: 52px !important;
+        min-height: 52px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        overflow: visible !important;
+        padding: 1px !important;
+    }
+    
+    .stTextInput > div > div > input,
+    input[type="text"][id*="text_input"],
+    input[aria-label*="URL"],
+    input[data-cursor-element-id] {
+        height: 50px !important;
+        min-height: 50px !important;
+        max-height: 50px !important;
+        border-radius: 12px !important;
+        padding: 0 16px !important;
+        font-size: 16px !important;
+        line-height: 50px !important;
+        border: 1px solid #E0E0E0 !important;
+        transition: border-color 0.3s ease;
+        vertical-align: middle !important;
+        text-align: left !important;
+        display: block !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Remove red borders from input fields */
+    input[type="text"][id*="text_input"]:invalid,
+    input[aria-label*="URL"]:invalid,
+    input[data-cursor-element-id]:invalid,
+    input[type="text"][id*="text_input"].error,
+    input[aria-label*="URL"].error,
+    input[data-cursor-element-id].error {
+        border: 1px solid #E0E0E0 !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Remove any red borders, outlines, or overlays from cursor/extension overlays */
+    input[data-cursor-element-id]::before,
+    input[data-cursor-element-id]::after,
+    input[type="text"][id*="text_input"]::before,
+    input[type="text"][id*="text_input"]::after,
+    input[aria-label*="URL"]::before,
+    input[aria-label*="URL"]::after {
+        display: none !important;
+        content: none !important;
+    }
+    
+    /* Aggressively remove any red rectangle overlays from cursor IDE or extensions */
+    [data-cursor-element-id],
+    *[data-cursor-element-id],
+    div[data-cursor-element-id],
+    span[data-cursor-element-id],
+    input[data-cursor-element-id],
+    input[data-cursor-element-id="cursor-el-60"],
+    input[id="text_input_1"][data-cursor-element-id],
+    [id*="cursor-el"] {
+        outline: none !important;
+        border: 1px solid #E0E0E0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
+    
+    /* Remove white borders on selection */
+    *::selection,
+    *::-moz-selection,
+    *:focus,
+    *:focus-visible,
+    *:focus-within {
+        outline: none !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Remove white borders from selected elements */
+    div[style*="border"],
+    div[style*="outline"],
+    div[style*="white"],
+    *[style*="border: white"],
+    *[style*="border-color: white"],
+    *[style*="outline: white"] {
+        border: none !important;
+        outline: none !important;
+    }
+    
+    /* Hide any overlay divs that are absolutely/fixed positioned with borders */
+    div[style*="position: absolute"],
+    div[style*="position: fixed"],
+    div[style*="absolute"],
+    div[style*="fixed"] {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Hide any overlay elements that might be creating red/white rectangles */
+    *[style*="red"],
+    *[style*="border.*red"],
+    *[style*="outline.*red"],
+    *[style*="white"],
+    *[style*="border.*white"],
+    *[style*="background.*white"],
+    *[style*="background-color.*white"],
+    *[style*="background-color.*#fff"],
+    *[style*="background-color.*#ffffff"],
+    *[class*="cursor"],
+    div[style*="position: absolute"][style*="border"],
+    div[style*="position: fixed"][style*="border"],
+    div[style*="position: absolute"][style*="background"],
+    div[style*="position: fixed"][style*="background"] {
+        outline: none !important;
+        border: none !important;
+        background: transparent !important;
+    }
+    
+    /* Ensure input elements don't have red borders/outlines */
+    input:not(:focus) {
+        outline: none !important;
+        border-color: #E0E0E0 !important;
+    }
+    
+    /* Remove any red box-shadows or outlines on inputs */
+    input[type="text"],
+    input[type="text"][data-cursor-element-id] {
+        box-shadow: none !important;
+        border: 1px solid #E0E0E0 !important;
+    }
+    
+    input[type="text"]:not(:focus),
+    input[type="text"][data-cursor-element-id]:not(:focus) {
+        outline: 0 !important;
+        border: 1px solid #E0E0E0 !important;
+        box-shadow: none !important;
+    }
+    
+    /* Hide any absolutely positioned overlays that might be red/white rectangles */
+    div[style*="position: absolute"][style*="border"],
+    div[style*="position: fixed"][style*="border"],
+    div[style*="position: absolute"][style*="background"],
+    div[style*="position: fixed"][style*="background"],
+    span[style*="position: absolute"][style*="border"],
+    span[style*="position: fixed"][style*="border"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        border: none !important;
+        background: transparent !important;
+    }
+    
+    /* Hide white rectangle overlays from element selector - aggressive targeting */
+    div[style*="background-color: white"],
+    div[style*="background-color:#fff"],
+    div[style*="background-color:#ffffff"],
+    div[style*="background-color:rgb(255, 255, 255)"],
+    div[style*="background-color:rgb(255,255,255)"],
+    div[style*="background: white"],
+    div[style*="background:#fff"],
+    div[style*="background:#ffffff"],
+    div[style*="background:rgb(255, 255, 255)"],
+    div[style*="background:rgb(255,255,255)"],
+    div[style*="background-color: white"],
+    span[style*="background-color: white"],
+    span[style*="background-color:#fff"],
+    span[style*="background-color:#ffffff"],
+    *[style*="background-color: white"],
+    *[style*="background-color:#fff"],
+    *[style*="background-color:#ffffff"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    input[type="text"][id*="text_input"]:focus,
+    input[aria-label*="URL"]:focus,
+    input[data-cursor-element-id]:focus,
+    .stTextInput > div > div > input:focus-visible,
+    input[type="text"][id*="text_input"]:focus-visible,
+    input[aria-label*="URL"]:focus-visible,
+    input[data-cursor-element-id]:focus-visible,
+    .stTextInput > div > div > input:active,
+    input[type="text"][id*="text_input"]:active,
+    input[aria-label*="URL"]:active,
+    input[data-cursor-element-id]:active {
+        border: 1px solid #E0E0E0 !important;
+        border-color: #E0E0E0 !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Aggressively remove ALL red borders and outlines in all states */
+    input[type="text"],
+    input[aria-label*="URL"],
+    input[id*="text_input"],
+    input[data-cursor-element-id],
+    input[type="text"]:focus,
+    input[aria-label*="URL"]:focus,
+    input[id*="text_input"]:focus,
+    input[data-cursor-element-id]:focus,
+    input[type="text"]:focus-within,
+    input[aria-label*="URL"]:focus-within,
+    input[id*="text_input"]:focus-within,
+    input[data-cursor-element-id]:focus-within,
+    input[type="text"]:invalid,
+    input[aria-label*="URL"]:invalid,
+    input[id*="text_input"]:invalid,
+    input[data-cursor-element-id]:invalid,
+    input[type="text"]:invalid:focus,
+    input[aria-label*="URL"]:invalid:focus,
+    input[id*="text_input"]:invalid:focus,
+    input[data-cursor-element-id]:invalid:focus {
+        border: 1px solid #E0E0E0 !important;
+        border-color: #E0E0E0 !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Remove any red color from borders in all states */
+    *[style*="border.*red"],
+    *[style*="border-color.*red"],
+    *[style*="outline.*red"],
+    input[style*="border.*red"],
+    input[style*="border-color.*red"],
+    input:focus[style*="border.*red"],
+    input:focus[style*="border-color.*red"] {
+        border: 1px solid #E0E0E0 !important;
+        border-color: #E0E0E0 !important;
+        outline: none !important;
+    }
+    
+    /* Remove red borders from parent containers when input is focused */
+    .stTextInput:has(input:focus),
+    .stTextInput:has(input:focus-visible),
+    div:has(input[aria-label*="URL"]:focus),
+    div:has(input[id*="text_input"]:focus) {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Remove any validation error styling */
+    input:required:invalid:focus,
+    input:required:invalid:not(:placeholder-shown):focus {
+        border: 1px solid #E0E0E0 !important;
+        border-color: #E0E0E0 !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Card Styling */
+    .css-card {
+        background-color: #FFFFFF;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border: 1px solid #F0F0F0;
+        margin-bottom: 20px;
+    }
+    
+    /* Heatmap Image Rounded Corners */
+    .stImage img {
+        border-radius: 12px !important;
+    }
+    
+    /* Metric Cards Enhancement */
+    [data-testid="stMetricValue"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        color: #667eea !important;
+    }
+    
+    /* Highlight ROI and revenue metrics */
+    .roi-card [data-testid="stMetricValue"],
+    .css-card [data-testid="stMetricValue"] {
+        color: #667eea !important;
+    }
+    
+    /* Ensure button is always visible, enabled, and has proper color */
+    button[data-testid="stBaseButton-primary"],
+    button[data-testid="stBaseButton-primary"]:not(:disabled),
+    button[type="button"][data-testid="stBaseButton-primary"],
+    button[key="roast_button"] {
+        visibility: visible !important;
+        display: block !important;
+        opacity: 1 !important;
+        cursor: pointer !important;
+        background-color: rgb(103, 58, 255) !important;
+        color: white !important;
+        border: none !important;
+    }
+    
+    button[data-testid="stBaseButton-primary"]:disabled,
+    button[key="roast_button"]:disabled {
+        background-color: rgb(103, 58, 255) !important;
+        color: white !important;
+        opacity: 1 !important;
+        cursor: pointer !important;
+    }
+    
+    button[data-testid="stBaseButton-primary"]:hover,
+    button[key="roast_button"]:hover {
+        background-color: rgb(85, 48, 220) !important;
+    }
+</style>
+<script>
+    // Auto-trigger button on Enter key press in URL input
+    (function() {
+        function setupEnterKeyHandler() {
+            const urlInputs = document.querySelectorAll('input[aria-label*="URL"], input[placeholder*="example.com"], input[type="text"]');
+            const roastButton = document.querySelector('button[data-testid="stBaseButton-primary"]');
+            
+            urlInputs.forEach(function(urlInput) {
+                // Remove existing listeners to avoid duplicates
+                const newInput = urlInput.cloneNode(true);
+                urlInput.parentNode.replaceChild(newInput, urlInput);
+                
+                newInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' && newInput.value.trim() !== '') {
+                        e.preventDefault();
+                        // Find and click the roast button
+                        const btn = document.querySelector('button[data-testid="stBaseButton-primary"]');
+                        if (btn && !btn.disabled) {
+                            btn.click();
+                        }
+                    }
+                });
+            });
+        }
+        
+        // Try immediately
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupEnterKeyHandler);
+        } else {
+            setupEnterKeyHandler();
+        }
+        
+        // Also try after delays (Streamlit renders elements dynamically)
+        setTimeout(setupEnterKeyHandler, 500);
+        setTimeout(setupEnterKeyHandler, 1500);
+        
+        // Use MutationObserver to catch dynamically added elements
+        const observer = new MutationObserver(function(mutations) {
+            let shouldSetup = false;
+            mutations.forEach(function(mutation) {
+                if (mutation.addedNodes.length > 0) {
+                    shouldSetup = true;
+                }
+            });
+            if (shouldSetup) {
+                setTimeout(setupEnterKeyHandler, 100);
+            }
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    })();
+    
+    // Aggressively remove any red/white rectangle overlays from cursor IDE or extensions
+    (function() {
+        function removeRedOverlays() {
+            // Remove red borders/outlines from all cursor elements
+            const cursorElements = document.querySelectorAll('[data-cursor-element-id]');
+            cursorElements.forEach(function(el) {
+                el.style.border = 'none';
+                el.style.outline = 'none';
+                el.style.boxShadow = 'none';
+                el.style.backgroundColor = 'transparent';
+                
+                // If it's an input, restore proper styling
+                if (el.tagName === 'INPUT') {
+                    el.style.border = '1px solid #E0E0E0';
+                }
+            });
+            
+            // Find and hide ANY elements with white backgrounds (more aggressive)
+            const allElements = document.querySelectorAll('*');
+            allElements.forEach(function(el) {
+                // Skip input elements and the body/html
+                if (el.tagName === 'INPUT' || el.tagName === 'BODY' || el.tagName === 'HTML' || el === document.activeElement) {
+                    return;
+                }
+                
+                const style = window.getComputedStyle(el);
+                const backgroundColor = style.backgroundColor;
+                const position = style.position;
+                const display = style.display;
+                const zIndex = style.zIndex;
+                
+                // Check for white background - be very aggressive
+                const bgColorStr = backgroundColor.toLowerCase();
+                const hasWhiteBackground = bgColorStr.includes('rgb(255, 255, 255)') || 
+                                          bgColorStr.includes('rgb(255,255,255)') ||
+                                          bgColorStr.includes('#ffffff') || 
+                                          bgColorStr.includes('#fff') ||
+                                          bgColorStr === 'white' ||
+                                          bgColorStr.startsWith('rgba(255, 255, 255') ||
+                                          bgColorStr.startsWith('rgba(255,255,255');
+                
+                // Hide any absolutely/fixed positioned elements with white backgrounds (overlays)
+                if (hasWhiteBackground && (position === 'absolute' || position === 'fixed') && display !== 'none') {
+                    // Only hide if it's likely an overlay (has high z-index or is positioned absolutely/fixed)
+                    if (parseInt(zIndex) > 1000 || position === 'absolute' || position === 'fixed') {
+                        el.style.display = 'none';
+                        el.style.visibility = 'hidden';
+                        el.style.opacity = '0';
+                        el.style.pointerEvents = 'none';
+                        el.style.background = 'transparent';
+                        el.style.backgroundColor = 'transparent';
+                    }
+                }
+                
+                // Also check for red borders (original functionality)
+                const borderColor = style.borderColor;
+                const hasRedBorder = borderColor.includes('rgb(255, 0, 0)') || borderColor.includes('rgb(255,0,0)') || 
+                                     borderColor.includes('#ff0000') || borderColor.includes('#f00');
+                
+                if (hasRedBorder && (position === 'absolute' || position === 'fixed') && display !== 'none') {
+                    if (el.tagName === 'DIV' || el.tagName === 'SPAN') {
+                        el.style.display = 'none';
+                        el.style.visibility = 'hidden';
+                        el.style.opacity = '0';
+                        el.style.pointerEvents = 'none';
+                        el.style.border = 'none';
+                        el.style.outline = 'none';
+                        el.style.boxShadow = 'none';
+                        el.style.background = 'transparent';
+                        el.style.backgroundColor = 'transparent';
+                    }
+                }
+            });
+            
+            // Force remove borders/outlines from input elements
+            const inputs = document.querySelectorAll('input[type="text"]');
+            inputs.forEach(function(input) {
+                input.style.outline = 'none';
+                input.style.boxShadow = 'none';
+                if (!input.matches(':focus')) {
+                    input.style.border = '1px solid #E0E0E0';
+                }
+            });
+        }
+        
+        // Run immediately
+        removeRedOverlays();
+        
+        // Run after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', removeRedOverlays);
+        }
+        
+        // Run multiple times to catch dynamically added elements
+        setTimeout(removeRedOverlays, 50);
+        setTimeout(removeRedOverlays, 100);
+        setTimeout(removeRedOverlays, 250);
+        setTimeout(removeRedOverlays, 500);
+        setTimeout(removeRedOverlays, 1000);
+        
+        // Use MutationObserver to catch dynamically added overlays
+        const overlayObserver = new MutationObserver(function(mutations) {
+            removeRedOverlays();
+        });
+        
+        overlayObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style', 'class', 'data-cursor-element-id']
+        });
+        
+        // Also observe style changes
+        const styleObserver = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    removeRedOverlays();
+                }
+            });
+        });
+        
+        styleObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['style'],
+            subtree: true
+        });
+        
+        // Run periodically as a fallback
+        setInterval(removeRedOverlays, 500);
+    })();
+</script>
+"""
+st.markdown(css, unsafe_allow_html=True)
+
+def repair_json(text, error_pos=None):
+    """
+    Repair common JSON syntax errors.
+    Tries multiple strategies to fix malformed JSON, especially missing commas.
+    """
+    if error_pos is not None and error_pos < len(text):
+        # Get context around the error position
+        start_ctx = max(0, error_pos - 100)
+        end_ctx = min(len(text), error_pos + 100)
+        context = text[start_ctx:end_ctx]
+        safe_print(f"[DEBUG] Error context (pos {error_pos}): {safe_error_message(context)}")
+    
+    fixed = text
+    
+    # Strategy 1: Remove trailing commas before } or ]
+    fixed = re.sub(r',(\s*[}\]])', r'\1', fixed)
+    
+    # Strategy 2: Fix missing comma after closing bracket before quote (CRITICAL - most common issue)
+    # Pattern: ] "key": -> ], "key":  OR  ]\n    "key": -> ],\n    "key":
+    fixed = re.sub(r'\]\s+"(\w+)":', r'], "\1":', fixed)
+    fixed = re.sub(r'\]\s*\n\s*"(\w+)":', r'],\n    "\1":', fixed)
+    
+    # Strategy 3: Fix missing comma after closing quote before quote (array/object property)
+    # Pattern: "value" "key": -> "value", "key":
+    fixed = re.sub(r'"\s+"(\w+)":', r'", "\1":', fixed)
+    
+    # Strategy 4: Fix missing comma after closing brace/bracket before quote
+    # Pattern: } "key": -> }, "key":  OR  ] "key": -> ], "key":
+    fixed = re.sub(r'([}\]])"(\w+)":', r'\1, "\2":', fixed)
+    
+    # Strategy 5: Fix missing comma after string values with newlines
+    # Pattern: "string"\n    "key": -> "string",\n    "key":
+    fixed = re.sub(r'"\s*\n\s*"(\w+)":', r'",\n    "\1":', fixed)
+    
+    # Strategy 6: Fix missing comma after closing bracket before opening brace
+    # Pattern: ] { -> ], {
+    fixed = re.sub(r'\]\s*{', r'], {', fixed)
+    
+    # Strategy 7: Fix missing comma between array elements (after closing bracket)
+    # Pattern: ]"key": -> ], "key":  (array ending before property)
+    fixed = re.sub(r'\]"(\w+)":', r'], "\1":', fixed)
+    
+    # Strategy 8: Fix missing comma after number/boolean before quote
+    # Pattern: 123 "key": -> 123, "key":  OR  true "key": -> true, "key":
+    fixed = re.sub(r'(\d+|true|false|null)\s+"(\w+)":', r'\1, "\2":', fixed)
+    
+    # Strategy 9: Fix missing comma after closing quote before opening brace (nested objects)
+    # Pattern: "value" { -> "value", {
+    fixed = re.sub(r'"\s*{', r'", {', fixed)
+    
+    # Strategy 10: Fix missing comma after closing quote before opening bracket (nested arrays)
+    # Pattern: "value" [ -> "value", [
+    fixed = re.sub(r'"\s*\[', r'", [', fixed)
+    
+    # Strategy 11: Fix missing comma after closing quote in arrays (common pattern)
+    # Pattern: "item"\n      "key": -> "item",\n      "key":
+    fixed = re.sub(r'"\s*\n\s+"(\w+)":', r'",\n    "\1":', fixed)
+    
+    # Strategy 12: More aggressive - fix any quote-space-quote that looks like property boundary
+    # But only if it's followed by a word and colon (property name pattern)
+    fixed = re.sub(r'(")\s+(")(\w+)":', r'\1, \2\3":', fixed)
+    
+    return fixed
+
+def clean_json_text(text):
+    """
+    The 'Janitor' cleaner: strip Markdown formatting and extract clean JSON.
+    Removes markdown code blocks and extracts the JSON object using balanced braces.
+    Handles truncated JSON by finding the deepest complete JSON object.
+    """
+    # Remove markdown code blocks
+    text = text.replace("```json", "").replace("```", "")
+    text = text.strip()
+    
+    # Find the first open bracket
+    start = text.find("{")
+    if start == -1:
+        return text
+    
+    # Find the last close bracket that balances with the first {
+    # This handles truncated JSON better than just finding last }
+    brace_count = 0
+    last_balanced_brace = -1
+    
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            brace_count += 1
+        elif text[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                last_balanced_brace = i
+                break  # Found the matching closing brace
+    
+    # If we found a balanced JSON object, return it
+    if last_balanced_brace != -1:
+        return text[start:last_balanced_brace + 1]
+    
+    # Fallback: if no balanced brace found, try to find last } (might be truncated)
+    end = text.rfind("}")
+    if end != -1 and end > start:
+        return text[start:end + 1]
+    
+    # Last resort: return from first { to end (truncated JSON - will be completed later)
+    return text[start:]
+
+def analyze_visuals(images, model):
+    """
+    Worker 1: Analyze visual design elements from screenshots.
+    Returns unified JSON schema with items array containing: Visual Hierarchy, Aesthetics, CTA Visibility, Trust Signals, Mobile Layout.
+    """
+    try:
+        # Optimize images before sending to Gemini
+        optimized_images = []
+        for img in images:
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            if img.width > 1024:
+                ratio = 1024 / img.width
+                new_height = int(img.height * ratio)
+                img = img.resize((1024, new_height), Image.Resampling.LANCZOS)
+            img_bytes = io.BytesIO()
+            img.save(img_bytes, format='JPEG', quality=80, optimize=True)
+            img_bytes.seek(0)
+            optimized_img = Image.open(img_bytes)
+            optimized_images.append(optimized_img)
+        
+        prompt = """Act as a Senior UX Designer. Analyze these screenshots of a landing page.
+
+Return ONLY valid JSON in this exact format (NO other keys, NO commentary):
+{
+  "items": [
+    {
+      "elementName": "Visual Hierarchy & Layout",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "ux",
+      "rationale": "1-2 sentence explanation",
+      "workingWell": ["Specific thing that works", "Another positive"],
+      "notWorking": ["Specific problem with exact details", "Another issue"],
+      "conversionImpact": "How this affects conversions (1 sentence)",
+      "fix": {
+        "quickFix": "Actionable fix explanation with exact values",
+        "example": "Code snippet or concrete example",
+        "expectedImpact": "Expected conversion impact"
+      }
+    },
+    {
+      "elementName": "Navigation Clarity",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "ux",
+      "rationale": "1-2 sentence explanation. Is the menu intuitive? Check menu structure, labeling clarity, and user navigation flow.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with navigation structure"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    },
+    {
+      "elementName": "Readability",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "ux",
+      "rationale": "1-2 sentence explanation. Check font sizes, line height, and contrast. Assess text legibility and reading comfort.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with font sizes, line height, or contrast"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix with exact font sizes, line heights, and contrast ratios",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    },
+    {
+      "elementName": "Scroll Experience",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "ux",
+      "rationale": "1-2 sentence explanation. Assess if the scroll experience is guided flow vs chaotic. Check for visual breaks, section transitions, and content organization.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with scroll flow"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    },
+    {
+      "elementName": "Aesthetics & Image Quality",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "visuals",
+      "rationale": "1-2 sentence explanation. Check logo visibility and stock image authenticity. Assess image quality, relevance, and brand consistency.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with logo visibility or stock image authenticity"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    },
+    {
+      "elementName": "CTA Visibility",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "conversion",
+      "rationale": "1-2 sentence explanation",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    },
+    {
+      "elementName": "Trust Signals",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "trust",
+      "rationale": "1-2 sentence explanation",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    },
+    {
+      "elementName": "Mobile Layout",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "ux",
+      "rationale": "1-2 sentence explanation",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Use AT MOST 3 items per element analyzed (aim for 8 items total as shown above)
+- radarCategory MUST be exactly: "ux", "conversion", "visuals", "trust", "speed" (lowercase)
+- status MUST be exactly: "Excellent", "Good", "Satisfactory", "Needs Improvement", or "Failed"
+- impact MUST be exactly: "HI", "MI", or "LI"
+- Be specific: include exact measurements, colors (hex codes), sizes, positions
+- Use professional UX terminology
+- MANDATORY CHECKS: Navigation clarity (Is the menu intuitive?), Readability (Font sizes, line height, and contrast check), Scroll experience (Guided flow vs chaotic), Logo visibility & stock image authenticity check"""
+        
+        response = model.generate_content(
+            [prompt] + optimized_images,
+            generation_config={
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": 8192,
+                "response_mime_type": "application/json"
+            }
+        )
+        
+        text = response.text.strip()
+        text = clean_json_text(text)
+        
+        # Parse JSON
+        try:
+            result = json.loads(text)
+        except json.JSONDecodeError as e:
+            fixed_text = repair_json(text, getattr(e, 'pos', None))
+            result = json.loads(fixed_text)
+        
+        # Ensure items array exists
+        if "items" not in result:
+            result["items"] = []
+        
+        return result
+    except Exception as e:
+        safe_print(f"[ERROR] analyze_visuals failed: {safe_error_message(e)}")
+        return {"items": []}
+
+def analyze_copy(text_content, model):
+    """
+    Worker 2: Analyze copywriting and messaging from text content.
+    Returns unified JSON schema with items array containing: Headline Impact, Value Proposition, Persuasion/Tone, One Page One Goal.
+    """
+    try:
+        # Clean and truncate text content if too long
+        clean_text = text_content[:5000] if len(text_content) > 5000 else text_content
+        
+        prompt = f"""Act as a Lead Copywriter. Analyze this landing page text content:
+
+{clean_text}
+
+Return ONLY valid JSON in this exact format (NO other keys, NO commentary):
+{{
+  "items": [
+    {{
+      "elementName": "Headline Impact",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "copy",
+      "rationale": "1-2 sentence explanation of headline clarity and benefit-driven nature",
+      "workingWell": ["Specific thing that works", "Another positive"],
+      "notWorking": ["Specific problem with exact copy examples", "Another issue"],
+      "conversionImpact": "How this affects conversions (1 sentence)",
+      "fix": {{
+        "quickFix": "Actionable fix with exact copy rewrite suggestions",
+        "example": "BEFORE: [current copy] AFTER: [improved copy]",
+        "expectedImpact": "Expected conversion impact"
+      }}
+    }},
+    {{
+      "elementName": "Value Proposition",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "copy",
+      "rationale": "1-2 sentence explanation of value prop clarity and differentiation. Check for differentiation vs generic claims. Assess if the value prop is unique and specific rather than generic industry language.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with differentiation vs generic claims"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix with specific differentiation suggestions",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }}
+    }},
+    {{
+      "elementName": "Persuasion & Tone",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "copy",
+      "rationale": "1-2 sentence explanation of persuasion techniques and tone appropriateness. Check for Authority (expertise, credentials, social proof) and Specificity (concrete details, numbers, specific benefits).",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with authority or specificity"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix with authority and specificity improvements",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }}
+    }},
+    {{
+      "elementName": "Objection Handling",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "copy",
+      "rationale": "1-2 sentence explanation. Specifically look for Price, Risk, Effort, and Time addresses. Check if objections are proactively addressed in the copy.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with Price, Risk, Effort, or Time objection handling"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix addressing Price, Risk, Effort, and Time objections",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }}
+    }},
+    {{
+      "elementName": "Lead Capture",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "conversion",
+      "rationale": "1-2 sentence explanation. Check clarity of what happens after submit. Assess if the post-submit process is clearly communicated.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with clarity of what happens after submit"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix clarifying post-submit process",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }}
+    }},
+    {{
+      "elementName": "One Page One Goal",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "conversion",
+      "rationale": "1-2 sentence explanation of competing CTAs and goal clarity",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix",
+        "example": "Example",
+        "expectedImpact": "Impact"
+      }}
+    }}
+  ]
+}}
+
+CRITICAL RULES:
+- Use AT MOST 3 items per element analyzed (aim for 6 items total as shown above)
+- radarCategory MUST be exactly: "ux", "conversion", "copy", "visuals", "trust", "speed" (lowercase)
+- status MUST be exactly: "Excellent", "Good", "Satisfactory", "Needs Improvement", or "Failed"
+- impact MUST be exactly: "HI", "MI", or "LI"
+- Be specific: include exact copy examples, suggest rewrites, identify jargon vs benefits
+- Use professional copywriting terminology
+- MANDATORY CHECKS: Lead Capture (Clarity of what happens after submit), Value Prop (Differentiation vs generic claims), Objection Handling (Price, Risk, Effort, and Time addresses), Persuasive Techniques (Authority and Specificity)"""
+        
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": 8192,
+                "response_mime_type": "application/json"
+            }
+        )
+        
+        text = response.text.strip()
+        text = clean_json_text(text)
+        
+        # Parse JSON
+        try:
+            result = json.loads(text)
+        except json.JSONDecodeError as e:
+            fixed_text = repair_json(text, getattr(e, 'pos', None))
+            result = json.loads(fixed_text)
+        
+        # Ensure items array exists
+        if "items" not in result:
+            result["items"] = []
+        
+        return result
+    except Exception as e:
+        safe_print(f"[ERROR] analyze_copy failed: {safe_error_message(e)}")
+        return {"items": []}
+
+def analyze_tech(html_source, model):
+    """
+    Worker 3: Analyze technical SEO and compliance from HTML source.
+    Returns unified JSON schema with items array containing: Page Speed Indicators, SEO Tags, Legal Compliance.
+    """
+    try:
+        # Clean HTML - remove scripts to reduce token usage
+        import re as regex_module
+        clean_html = regex_module.sub(r'<script[^>]*>.*?</script>', '', html_source, flags=regex_module.DOTALL | regex_module.IGNORECASE)
+        clean_html = regex_module.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=regex_module.DOTALL | regex_module.IGNORECASE)
+        
+        # Truncate if too long
+        clean_html = clean_html[:3000] if len(clean_html) > 3000 else clean_html
+        
+        prompt = f"""Act as a Technical SEO Expert. Analyze this HTML source code:
+
+{clean_html}
+
+Return ONLY valid JSON in this exact format (NO other keys, NO commentary):
+{{
+  "items": [
+    {{
+      "elementName": "Page Speed Indicators",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "speed",
+      "rationale": "1-2 sentence explanation of heavy scripts, image optimization, load time. Check for Caching & CDN usage (if detectable from HTML headers, cache-control tags, or CDN references).",
+      "workingWell": ["Specific thing that works", "Another positive"],
+      "notWorking": ["Specific problem with exact technical details", "Caching or CDN issues if detectable"],
+      "conversionImpact": "How this affects conversions (1 sentence)",
+      "fix": {{
+        "quickFix": "Actionable fix with technical specifics including caching and CDN recommendations",
+        "example": "Code snippet or configuration example",
+        "expectedImpact": "Expected conversion impact"
+      }}
+    }},
+    {{
+      "elementName": "SEO Tags",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "copy",
+      "rationale": "1-2 sentence explanation of H1 structure, meta description quality",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with tag names and attributes"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix",
+        "example": "Example HTML tags",
+        "expectedImpact": "Impact"
+      }}
+    }},
+    {{
+      "elementName": "Legal Compliance",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "trust",
+      "rationale": "1-2 sentence explanation. Check specifically for Privacy Policy, Terms & Conditions, Cookie Policy, AND Disclaimers. Verify presence and accessibility of all required legal links.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with Privacy Policy, Terms & Conditions, Cookie Policy, or Disclaimers"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix ensuring Privacy Policy, Terms & Conditions, Cookie Policy, and Disclaimers are present",
+        "example": "Example link structure for all legal pages",
+        "expectedImpact": "Impact"
+      }}
+    }},
+    {{
+      "elementName": "Mobile Form Usability",
+      "status": "Excellent" | "Good" | "Satisfactory" | "Needs Improvement" | "Failed",
+      "impact": "HI" | "MI" | "LI",
+      "radarCategory": "ux",
+      "rationale": "1-2 sentence explanation. Check form usability for mobile devices. Verify keyboard types for email/number inputs (type='email', type='tel', type='number'). Assess if forms are mobile-friendly.",
+      "workingWell": ["Specific thing that works"],
+      "notWorking": ["Specific problem with keyboard types for email/number inputs or mobile form usability"],
+      "conversionImpact": "How this affects conversions",
+      "fix": {{
+        "quickFix": "Actionable fix with proper input types (email, tel, number) and mobile form optimization",
+        "example": "Example HTML form with correct input types",
+        "expectedImpact": "Impact"
+      }}
+    }}
+  ]
+}}
+
+CRITICAL RULES:
+- Use AT MOST 3 items per element analyzed (aim for 4 items total as shown above)
+- radarCategory MUST be exactly: "ux", "conversion", "copy", "visuals", "trust", "speed" (lowercase)
+- status MUST be exactly: "Excellent", "Good", "Satisfactory", "Needs Improvement", or "Failed"
+- impact MUST be exactly: "HI", "MI", or "LI"
+- Be specific: include tag names, attribute values, link URLs
+- Use professional SEO terminology
+- MANDATORY CHECKS: Speed (Caching & CDN usage if detectable), Legal (Privacy Policy, Terms & Conditions, Cookie Policy, AND Disclaimers), Mobile (Form usability - keyboard types for email/number)"""
+        
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": 8192,
+                "response_mime_type": "application/json"
+            }
+        )
+        
+        text = response.text.strip()
+        text = clean_json_text(text)
+        
+        # Parse JSON
+        try:
+            result = json.loads(text)
+        except json.JSONDecodeError as e:
+            fixed_text = repair_json(text, getattr(e, 'pos', None))
+            result = json.loads(fixed_text)
+        
+        # Ensure items array exists
+        if "items" not in result:
+            result["items"] = []
+        
+        return result
+    except Exception as e:
+        safe_print(f"[ERROR] analyze_tech failed: {safe_error_message(e)}")
+        return {"items": []}
+
+def compile_roast(images, text_content, html_source, progress_manager=None):
+    """
+    Manager function: Orchestrates the 3 workers and merges their unified JSON outputs
+    into the final God Mode JSON schema with scoring, roast summary, and aggregation.
+    """
+    api_key = os.getenv("GOOGLE_GENAI_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_GENAI_API_KEY not found in environment. Please add it to .env.local file.")
+    
+    api_key = api_key.strip().strip('"').strip("'")
+    if not api_key:
+        raise ValueError("GOOGLE_GENAI_API_KEY is empty. Please check your .env.local file.")
+    
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash-001')
+    except Exception as e:
+        raise ValueError(f"Failed to configure Gemini API: {str(e)}")
+    
+    # Worker 1: Analyze Visuals (Progress step 13)
+    if progress_manager:
+        progress_manager.update(13)
+    try:
+        visuals_data = analyze_visuals(images, model)
+        visuals_items = visuals_data.get("items", [])
+    except Exception as e:
+        safe_print(f"[ERROR] Visuals worker failed: {safe_error_message(e)}")
+        visuals_items = []
+    
+    # Worker 2: Analyze Copy (Progress step 15)
+    if progress_manager:
+        progress_manager.update(15)
+    try:
+        copy_data = analyze_copy(text_content, model)
+        copy_items = copy_data.get("items", [])
+    except Exception as e:
+        safe_print(f"[ERROR] Copy worker failed: {safe_error_message(e)}")
+        copy_items = []
+    
+    # Worker 3: Analyze Tech (Progress step 17)
+    if progress_manager:
+        progress_manager.update(17)
+    try:
+        tech_data = analyze_tech(html_source, model)
+        tech_items = tech_data.get("items", [])
+    except Exception as e:
+        safe_print(f"[ERROR] Tech worker failed: {safe_error_message(e)}")
+        tech_items = []
+    
+    # Merge all items
+    all_items = visuals_items + copy_items + tech_items
+    
+    # Scoring logic: Status points and impact multipliers
+    status_points = {
+        "Excellent": 95,
+        "Good": 80,
+        "Satisfactory": 60,
+        "Needs Improvement": 35,
+        "Failed": 5
+    }
+    impact_multipliers = {
+        "HI": 1.5,
+        "MI": 1.0,
+        "LI": 0.5
+    }
+    
+    # Group items by radarCategory and calculate scores
+    radar_categories = ["ux", "conversion", "copy", "visuals", "trust", "speed"]
+    radar_metrics = {}
+    
+    for category in radar_categories:
+        category_items = [item for item in all_items if item.get("radarCategory", "").lower() == category.lower()]
+        if category_items:
+            weighted_sum = 0
+            weight_sum = 0
+            for item in category_items:
+                status = item.get("status", "Satisfactory")
+                impact = item.get("impact", "MI")
+                points = status_points.get(status, 60)
+                multiplier = impact_multipliers.get(impact, 1.0)
+                weighted_sum += points * multiplier
+                weight_sum += 95 * multiplier
+            radar_metrics[category] = round((weighted_sum / weight_sum) * 100) if weight_sum > 0 else 50
+        else:
+            radar_metrics[category] = 50
+    
+    # Calculate overall score (average of radar scores)
+    overall_score = round(sum(radar_metrics.values()) / len(radar_metrics))
+    
+    # Generate roast summary using AI (Progress step 18)
+    if progress_manager:
+        progress_manager.update(18)
+    
+    roast_summary_json = {
+        "executiveSummary": "Overall analysis complete. Review detailed findings below.",
+        "roastAnalysis": "Comprehensive audit completed across all key areas."
+    }
+    
+    # Always generate roast summary - explicitly call API if missing or empty
+    if all_items:
+        try:
+            # Build audit_dump with failed/needs improvement items
+            failed_items = [
+                item for item in all_items 
+                if item.get("status") in ["Failed", "Needs Improvement"]
+            ]
+            
+            audit_dump = []
+            for item in failed_items[:15]:  # Limit to 15 items for token efficiency
+                element_name = item.get("elementName", "Unknown Element")
+                status = item.get("status", "Unknown")
+                audit_dump.append(f"- {element_name}: {status}")
+            
+            audit_dump_str = "\n".join(audit_dump) if audit_dump else "No critical issues found."
+            
+            roast_prompt = f"""You are a brutally honest, no-nonsense CRO Consultant who uses humor to soften the blow.
+
+Input: The list of failed audit items:
+{audit_dump_str}
+
+Task: Generate a JSON object roastSummary with:
+
+hook: Exactly 3 lines. Witty, savage, and specific. Hook the reader immediately. Each line should be punchy and memorable.
+
+analysis: A single block of text (10-12 sentences). No bullet points. Discuss the Good, the Bad, and the Ugly truths of the audit. Be honest, direct, and helpful. No fluff. Cover what's working well, what's broken, and what needs urgent attention.
+
+Return ONLY valid JSON in this format:
+{{
+  "hook": "Line 1\\nLine 2\\nLine 3",
+  "analysis": "A comprehensive 10-12 sentence analysis covering the Good, the Bad, and the Ugly. Be brutally honest but helpful."
+}}
+
+Be witty, direct, and focus on conversion impact."""
+            
+            roast_response = model.generate_content(
+                roast_prompt,
+                generation_config={
+                    "temperature": 0.8,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 512,
+                    "response_mime_type": "application/json"
+                }
+            )
+            
+            roast_text = roast_response.text.strip()
+            roast_text = clean_json_text(roast_text)
+            try:
+                roast_summary_json = json.loads(roast_text)
+                # Convert new format to legacy format for backward compatibility
+                if "hook" in roast_summary_json and "analysis" in roast_summary_json:
+                    roast_summary_json["executiveSummary"] = roast_summary_json.get("hook", "")
+                    roast_summary_json["roastAnalysis"] = roast_summary_json.get("analysis", "")
+            except json.JSONDecodeError as e:
+                fixed_text = repair_json(roast_text, getattr(e, 'pos', None))
+                roast_summary_json = json.loads(fixed_text)
+                # Convert new format to legacy format
+                if "hook" in roast_summary_json and "analysis" in roast_summary_json:
+                    roast_summary_json["executiveSummary"] = roast_summary_json.get("hook", "")
+                    roast_summary_json["roastAnalysis"] = roast_summary_json.get("analysis", "")
+        except Exception as e:
+            safe_print(f"[WARN] Roast summary generation failed: {safe_error_message(e)}")
+            # Fallback: generate a basic summary from items
+            if failed_items:
+                failed_names = [item.get("elementName", "Issue") for item in failed_items[:3]]
+                roast_summary_json = {
+                    "hook": f"Found {len(failed_items)} areas needing attention.\nFocus on: {', '.join(failed_names)}.\nThese improvements can boost conversions.",
+                    "analysis": f"Analysis identified {len(failed_items)} critical issues that impact conversion rates. Addressing these top priorities will improve user experience and drive better results. The audit reveals both strengths and weaknesses across key conversion elements.",
+                    "executiveSummary": f"Found {len(failed_items)} areas needing attention.\nFocus on: {', '.join(failed_names)}.\nThese improvements can boost conversions.",
+                    "roastAnalysis": f"Analysis identified {len(failed_items)} critical issues that impact conversion rates. Addressing these top priorities will improve user experience and drive better results."
+                }
+    
+    # Ensure roastSummary is always set with both new and legacy formats
+    if not roast_summary_json.get("hook") and not roast_summary_json.get("executiveSummary"):
+        roast_summary_json = {
+            "hook": f"Site Score: {overall_score}/100\nAnalysis complete across all key areas.\nReview detailed findings below.",
+            "analysis": "Comprehensive audit completed. Review the detailed findings to identify improvement opportunities. The analysis covers all critical conversion elements and provides actionable insights.",
+            "executiveSummary": f"Site Score: {overall_score}/100\nAnalysis complete across all key areas.\nReview detailed findings below.",
+            "roastAnalysis": "Comprehensive audit completed. Review the detailed findings to identify improvement opportunities."
+        }
+    elif "hook" in roast_summary_json and "executiveSummary" not in roast_summary_json:
+        roast_summary_json["executiveSummary"] = roast_summary_json.get("hook", "")
+        roast_summary_json["roastAnalysis"] = roast_summary_json.get("analysis", "")
+    
+    # Build quick wins: Use Badness Score system to always return top 3 priorities
+    def calculate_badness_score(item):
+        """Calculate badness score for an item. Higher score = higher priority."""
+        status = item.get("status", "Satisfactory")
+        impact = item.get("impact", "MI")
+        
+        # Badness Score calculation
+        if status == "Failed" and impact == "HI":
+            return 100
+        elif status == "Failed" and impact == "MI":
+            return 80
+        elif status == "Needs Improvement" and impact == "HI":
+            return 60
+        elif status == "Needs Improvement" and impact == "MI":
+            return 40
+        elif status == "Satisfactory":
+            return 10
+        elif status == "Good":
+            return 5
+        elif status == "Excellent":
+            return 0
+        else:
+            # Default for unknown status/impact combinations
+            if status in ["Failed", "Needs Improvement"]:
+                return 50
+            return 10
+    
+    # Calculate badness score for all items and sort by score (descending)
+    items_with_scores = [(item, calculate_badness_score(item)) for item in all_items]
+    sorted_items = sorted(items_with_scores, key=lambda x: x[1], reverse=True)
+    
+    # Always take top 3 items (guarantees we always have 3 quick wins)
+    quick_wins = []
+    for item, score in sorted_items[:3]:
+        quick_wins.append({
+            "title": item.get("elementName", "Fix Required"),
+            "elementName": item.get("elementName", "Fix Required"),
+            "problem": "; ".join(item.get("notWorking", [])[:2]) if item.get("notWorking") else "Review and improve",
+            "fix": item.get("fix", {}).get("quickFix", "Review and improve") if isinstance(item.get("fix"), dict) else str(item.get("fix", "Review and improve")),
+            "example": item.get("fix", {}).get("example", "") if isinstance(item.get("fix"), dict) else "",
+            "effort": "15min",
+            "lift": item.get("fix", {}).get("expectedImpact", "Expected conversion improvement") if isinstance(item.get("fix"), dict) else "Expected conversion improvement"
+        })
+    
+    # Build detailedAudit: Group items by radarCategory (case-insensitive matching)
+    detailed_audit = {}
+    for category in radar_categories:
+        # Normalize category to lowercase for consistent matching
+        cat_lower = category.lower()
+        category_items = [
+            item for item in all_items 
+            if item.get("radarCategory", "").lower() == cat_lower
+        ]
+        
+        # Data validity check: If Visuals category is empty, add placeholder
+        if category.lower() == "visuals" and not category_items:
+            category_items = [{
+                "elementName": "Visual Analysis",
+                "status": "Satisfactory",
+                "impact": "MI",
+                "radarCategory": "visuals",
+                "rationale": "Visual analysis data was not available. This may indicate the visuals worker did not return structured findings.",
+                "workingWell": ["Visual elements present on page"],
+                "notWorking": ["Unable to perform detailed visual analysis"],
+                "fix": {
+                    "quickFix": "Review visual elements manually. Ensure images, colors, and layout align with brand guidelines.",
+                    "expectedImpact": "Maintains visual consistency"
+                }
+            }]
+        
+        detailed_audit[category] = category_items
+    
+    # Build final JSON structure (backward compatible with existing display_dashboard and generate_pdf)
+    final_json = {
+        "overview": {
+            "overallScore": overall_score,
+            "executiveSummary": roast_summary_json.get("executiveSummary", "Analysis complete."),
+            "roastAnalysis": roast_summary_json.get("roastAnalysis", "Review findings below.")
+        },
+        "roastSummary": roast_summary_json.get("executiveSummary", "Analysis complete."),
+        "headline_roast": f"Site Score: {overall_score}/100",
+        "radarMetrics": radar_metrics,
+        "quickWins": quick_wins,
+        "detailedAudit": detailed_audit,
+        # Backward compatibility fields
+        "overall_score": overall_score,
+        "quick_wins": quick_wins,
+        "summary_bullets": [
+            f"✅ {item.get('elementName')}" for item in all_items if item.get("status") in ["Excellent", "Good"]
+        ][:10] + [
+            f"❌ {item.get('elementName')}" for item in all_items if item.get("status") in ["Needs Improvement", "Failed"]
+        ][:10],
+        "sections": [],  # Empty for now, can be populated if needed
+        "radar_scores": {
+            "UX": radar_metrics.get("ux", 50),
+            "Conversion": radar_metrics.get("conversion", 50),
+            "Copy": radar_metrics.get("copy", 50),
+            "Visuals": radar_metrics.get("visuals", 50),
+            "Trust": radar_metrics.get("trust", 50),
+            "Speed": radar_metrics.get("speed", 50)
+        },
+        "categories": [],
+        "audit_items": [
+            {
+                "element": item.get("elementName", ""),
+                "status": item.get("status", "Satisfactory"),
+                "rationale": item.get("rationale", ""),
+                "working": item.get("workingWell", []),
+                "not_working": item.get("notWorking", []),
+                "fix": item.get("fix", {}).get("quickFix", ""),
+                "expected_impact": item.get("conversionImpact", "")
+            }
+            for item in all_items
+        ]
+    }
+    
+    return final_json
+
+def generate_roast(images, html_content="", page_text="", progress_manager=None):
+    """
+    Main entry point for website analysis. Uses Assembly Line architecture:
+    - Worker 1: analyze_visuals (screenshots)
+    - Worker 2: analyze_copy (text content)
+    - Worker 3: analyze_tech (HTML source)
+    - Manager: compile_roast (merges results)
+    """
+    return compile_roast(images, page_text, html_content, progress_manager)
+
+async def capture_screenshot_from_url(url: str, device: str = 'desktop'):
+    """
+    Capture rolling screenshots from a URL using Playwright with stealth mode.
+    Supports both desktop and mobile device emulation.
+    
+    Args:
+        url: The URL to capture (supports all TLDs)
+        device: 'desktop' or 'mobile' (default: 'desktop')
+    
+    Returns:
+        (screenshots: list, html_content: str, page_text: str)
+    """
+    browser = None
+    max_retries = 3
+    retry_delay = 2  # seconds
+    
+    # Normalize device parameter
+    device = device.lower() if device else 'desktop'
+    if device not in ['desktop', 'mobile']:
+        device = 'desktop'
+    
+    # Ensure URL has protocol (handles all TLDs: .com, .ai, .io, .co, etc.)
+    if not url.startswith(('http://', 'https://')):
+        # Remove www. if present, then add https://
+        url = url.replace('www.', '')
+        url = 'https://' + url
+    
+    safe_print(f"[DEBUG] Normalized URL: {url}")
+    safe_print(f"[DEBUG] Device mode: {device}")
+    safe_print(f"[DEBUG] Starting playwright for URL: {url}")
+    
+    # Device-specific configuration
+    if device == 'mobile':
+        # Mobile device configuration (iPhone 14)
+        viewport_config = {'width': 390, 'height': 844}
+        screen_config = {'width': 390, 'height': 844}
+        user_agent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
+        is_mobile = True
+        has_touch = True
+        device_scale_factor = 3
+    else:
+        # Desktop configuration
+        viewport_config = {'width': 1920, 'height': 1080}
+        screen_config = {'width': 1920, 'height': 1080}
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        is_mobile = False
+        has_touch = False
+        device_scale_factor = 1
+    
+    # Realistic browser headers to avoid detection
+    realistic_headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
+    }
+    
+    # Enhanced stealth browser launch arguments (The 'Human' Mask)
+    stealth_args = [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-infobars',
+        '--window-position=0,0',
+        '--ignore-certifcate-errors',
+        '--ignore-certificate-errors-spki-list',
+        '--user-agent=' + user_agent,  # Use device-specific user agent
+    ]
+    
+    # Try headless first, fallback to headless=False if needed
+    headless_mode = True
+    
+    for attempt in range(max_retries):
+        try:
+            async with async_playwright() as p:
+                safe_print(f"[DEBUG] Launching Chromium browser (attempt {attempt + 1}/{max_retries}, headless={headless_mode})...")
+                
+                # Launch Chromium with enhanced stealth mode
+                try:
+                    browser = await p.chromium.launch(
+                        headless=headless_mode,
+                        args=stealth_args
+                    )
+                except Exception as launch_error:
+                    error_msg = str(launch_error).lower()
+                    if 'executable' in error_msg or 'doesn\'t exist' in error_msg or 'not found' in error_msg:
+                        raise Exception(
+                            'Critical Error: Browser not found. Run "playwright install chromium" in terminal.\n'
+                            'If that doesn\'t work, try "python -m playwright install chromium"'
+                        )
+                    raise launch_error
+                
+                safe_print("[DEBUG] Creating context with stealth configuration...")
+                context = await browser.new_context(
+                    viewport=viewport_config,
+                    user_agent=user_agent,
+                    extra_http_headers=realistic_headers,
+                    locale='en-US',
+                    timezone_id='America/New_York',
+                    permissions=['geolocation'],
+                    color_scheme='light',
+                    screen=screen_config,
+                    has_touch=has_touch,
+                    is_mobile=is_mobile,
+                    device_scale_factor=device_scale_factor,
+                )
+                page = await context.new_page()
+                
+                # Set additional headers on the page
+                await page.set_extra_http_headers(realistic_headers)
+                
+                # Enhanced stealth JavaScript injection (before navigation)
+                await page.add_init_script("""
+                    // Remove webdriver flag completely
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                        configurable: true
+                    });
+                    delete navigator.__proto__.webdriver;
+                    
+                    // Mock plugins with realistic data
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                        configurable: true
+                    });
+                    
+                    // Mock languages
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en'],
+                        configurable: true
+                    });
+                    
+                    // Override permissions API
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                    
+                    // Mock chrome object (essential for Chrome detection)
+                    if (!window.chrome) {
+                        window.chrome = {};
+                    }
+                    if (!window.chrome.runtime) {
+                        window.chrome.runtime = {};
+                    }
+                    if (!window.chrome.runtime.onConnect) {
+                        window.chrome.runtime.onConnect = undefined;
+                    }
+                    
+                    // Override WebGL vendor and renderer
+                    const getParameter = WebGLRenderingContext.prototype.getParameter;
+                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) {
+                            return 'Intel Inc.';
+                        }
+                        if (parameter === 37446) {
+                            return 'Intel Iris OpenGL Engine';
+                        }
+                        return getParameter.call(this, parameter);
+                    };
+                    
+                    // Override canvas fingerprinting
+                    const toBlob = HTMLCanvasElement.prototype.toBlob;
+                    const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+                    const getImageData = CanvasRenderingContext2D.prototype.getImageData;
+                    
+                    // Mock notification permissions
+                    Object.defineProperty(Notification, 'permission', {
+                        get: () => 'default'
+                    });
+                    
+                    // Override iframe contentWindow
+                    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+                        get: function() {
+                            return window;
+                        }
+                    });
+                """)
+                
+                # Additional CDP commands for Chromium to hide automation
+                try:
+                    cdp_session = await context.new_cdp_session(page)
+                    # Hide webdriver property via CDP (executes before page scripts)
+                    await cdp_session.send('Page.addScriptToEvaluateOnNewDocument', {
+                        'source': '''
+                            Object.defineProperty(navigator, 'webdriver', {
+                                get: () => false
+                            });
+                            // Override Chrome runtime
+                            if (!window.chrome) {
+                                window.chrome = {};
+                            }
+                            if (!window.chrome.runtime) {
+                                window.chrome.runtime = {};
+                            }
+                        '''
+                    })
+                except Exception as cdp_error:
+                    # CDP is optional, don't fail if it doesn't work
+                    safe_print(f"[WARN] CDP stealth injection failed (non-critical): {safe_error_message(str(cdp_error))}")
+                
+                safe_print(f"[DEBUG] Navigating to {url}...")
+                # Navigate to URL with retry logic - try different wait strategies
+                wait_strategies = ['domcontentloaded', 'load', 'networkidle']
+                wait_strategy = wait_strategies[min(attempt, len(wait_strategies) - 1)]
+                
+                try:
+                    # Try navigation with different strategies on retries
+                    await page.goto(
+                        url, 
+                        wait_until=wait_strategy, 
+                        timeout=60000,
+                        referer='https://www.google.com/'  # Add referer to look more legitimate
+                    )
+                    safe_print(f"[DEBUG] Navigation complete (used {wait_strategy} wait strategy)")
+                except Exception as nav_error:
+                    error_msg = str(nav_error).lower()
+                    # Check if it's an HTTP/2 error or network error
+                    is_network_error = (
+                        'http2' in error_msg or 
+                        'protocol_error' in error_msg or 
+                        'err_http2' in error_msg or
+                        'net::' in error_msg or
+                        'timeout' in error_msg
+                    )
+                    
+                    if is_network_error:
+                        safe_print(f"[WARN] Network/protocol error detected (attempt {attempt + 1}/{max_retries}): {error_msg[:100]}")
+                        if attempt < max_retries - 1:
+                            await browser.close()
+                            # If headless failed, try non-headless on next attempt
+                            if headless_mode and attempt == max_retries - 2:
+                                safe_print("[DEBUG] Attempting fallback with headless=False...")
+                                headless_mode = False
+                            await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                            continue  # Retry with next attempt
+                        else:
+                            safe_print("[DEBUG] All retry attempts exhausted")
+                            # If still in headless mode and all retries failed, try one more time with headless=False
+                            if headless_mode:
+                                safe_print("[DEBUG] Final attempt: trying with headless=False...")
+                                await browser.close()
+                                headless_mode = False
+                                await asyncio.sleep(2)
+                                continue
+                            raise nav_error
+                    else:
+                        raise nav_error
+                
+                # CRITICAL: Wait 3 seconds for firewall/security analysis to complete
+                safe_print("[DEBUG] Waiting 3 seconds for firewall analysis...")
+                await page.wait_for_timeout(3000)
+                
+                # Human-like behavior: Random mouse movement to prove we're not a robot
+                try:
+                    # Move mouse to random position (human-like behavior)
+                    viewport_height = viewport_config['height']
+                    viewport_width = viewport_config['width']
+                    random_x = random.randint(100, viewport_width - 100)
+                    random_y = random.randint(100, viewport_height - 100)
+                    await page.mouse.move(random_x, random_y)
+                    safe_print("[DEBUG] Performed human-like mouse movement")
+                    await asyncio.sleep(random.uniform(0.5, 1.5))  # Random delay
+                except Exception as mouse_error:
+                    safe_print(f"[WARN] Mouse movement failed (non-critical): {safe_error_message(str(mouse_error))}")
+                
+                # Hard sleep to let images settle (prevents hanging on background scripts)
+                await asyncio.sleep(2)
+                
+                # Human-like scrolling to trigger lazy loading (proves we're not a robot)
+                safe_print("[DEBUG] Performing human-like scroll to trigger lazy loading...")
+                await page.evaluate("""
+                    async () => {
+                        await new Promise((resolve) => {
+                            let totalHeight = 0;
+                            const distance = 100;
+                            const timer = setInterval(() => {
+                                const scrollHeight = document.body.scrollHeight;
+                                window.scrollBy(0, distance);
+                                totalHeight += distance;
+                                if(totalHeight >= scrollHeight || totalHeight > 50000){
+                                    clearInterval(timer);
+                                    resolve();
+                                }
+                            }, 100);
+                        });
+                    }
+                """)
+                
+                # Scroll back to top with smooth behavior
+                await page.evaluate("window.scrollTo({ top: 0, behavior: 'smooth' })")
+                await asyncio.sleep(500 / 1000)  # 500ms wait
+                
+                # Extract HTML content and visible text
+                safe_print("[DEBUG] Extracting HTML and text content...")
+                html_content = await page.content()
+                page_text = await page.evaluate("document.body.innerText")
+                safe_print(f"[DEBUG] Extracted {len(html_content)} chars of HTML and {len(page_text)} chars of text")
+                
+                # Get dynamic viewport height
+                viewport_height = await page.evaluate("window.innerHeight")
+                safe_print(f"[DEBUG] Viewport height: {viewport_height}px")
+                
+                # Hide sticky/fixed elements for cleaner stitching (Optional Pro feature)
+                await page.evaluate("""
+                    () => {
+                        const fixedElements = document.querySelectorAll('*');
+                        fixedElements.forEach(el => {
+                            const style = window.getComputedStyle(el);
+                            if (style.position === 'fixed' || style.position === 'sticky') {
+                                el.dataset.originalDisplay = style.display;
+                                el.style.display = 'none';
+                            }
+                        });
+                    }
+                """)
+                safe_print("[DEBUG] Hidden sticky/fixed elements for seamless stitching")
+                
+                # Precise Rolling Screenshot Capture (No overlap for stitching)
+                screenshots = []
+                sanity_limit = 15
+                current_scroll = 0
+                chunk_index = 0
+                
+                total_height = await page.evaluate("document.body.scrollHeight")
+                
+                while current_scroll < total_height and chunk_index < sanity_limit:
+                    # Take screenshot of current viewport
+                    screenshot_bytes = await page.screenshot(type='png', full_page=False)
+                    
+                    # Convert to PIL Image
+                    from io import BytesIO
+                    img = Image.open(BytesIO(screenshot_bytes))
+                    screenshots.append(img)
+                    
+                    # Break condition: Do not scrape infinite scroll pages forever
+                    chunk_index += 1
+                    if chunk_index >= 2:  # Limited to 2 chunks while resolving errors
+                        break
+                    
+                    # Precise scroll (exactly viewport_height, no overlap)
+                    current_scroll += viewport_height
+                    await page.mouse.wheel(0, viewport_height)  # Precise mouse wheel scroll
+                    await asyncio.sleep(1)
+                    
+                    # Recalculate total height (in case of dynamic content)
+                    total_height = await page.evaluate("document.body.scrollHeight")
+                
+                safe_print(f"[DEBUG] Captured {len(screenshots)} chunks successfully")
+                await browser.close()
+                
+                return screenshots, html_content, page_text
+                
+        except Exception as e:
+            error_msg = str(e).lower()
+            is_network_error = (
+                'http2' in error_msg or 
+                'protocol_error' in error_msg or 
+                'err_http2' in error_msg or
+                'net::' in error_msg or
+                'timeout' in error_msg or
+                'navigation' in error_msg
+            )
+            
+            if is_network_error and attempt < max_retries - 1:
+                safe_print(f"[WARN] Network error on attempt {attempt + 1}, retrying in {retry_delay * (attempt + 1)}s...")
+                if browser:
+                    try:
+                        await browser.close()
+                    except:
+                        pass
+                # If headless failed, try non-headless on next attempt
+                if headless_mode and attempt == max_retries - 2:
+                    safe_print("[DEBUG] Attempting fallback with headless=False...")
+                    headless_mode = False
+                await asyncio.sleep(retry_delay * (attempt + 1))
+                continue  # Retry
+            else:
+                # Final attempt failed or non-network error
+                if browser:
+                    try:
+                        await browser.close()
+                    except:
+                        pass
+                
+                # If still in headless mode and it's a network error, try one final time with headless=False
+                if is_network_error and headless_mode:
+                    safe_print("[DEBUG] Final attempt: trying with headless=False...")
+                    headless_mode = False
+                    await asyncio.sleep(2)
+                    continue
+                
+                import traceback
+                error_details = traceback.format_exc()
+                safe_print(f"[ERROR] Screenshot capture failed after {attempt + 1} attempts:")
+                safe_print(safe_error_message(error_details))
+                
+                # Provide helpful error message
+                if is_network_error:
+                    error_message = (
+                        f"Target site has Enterprise Blocking active. Please try a different URL.\n\n"
+                        f"Network/protocol error when accessing {url}. "
+                        f"This can happen if the website blocks automated browsers or has strict security. "
+                        f"Tried {max_retries} times with different configurations (including visible browser mode). "
+                        f"Consider trying again later or using a different URL."
+                    )
+                else:
+                    safe_error = safe_error_message(e)
+                    error_message = f"Failed to capture screenshot: {safe_error}"
+                
+                safe_error_details = safe_error_message(error_details)
+                raise Exception(f"{error_message}\n\nFull traceback:\n{safe_error_details}")
+    
+    # Should never reach here, but just in case
+    raise Exception(f"Failed to capture screenshot from {url} after {max_retries} attempts")
+
+def update_vibe_progress(bar, status, step_index, total_steps=20):
+    """
+    Update progress bar to a specific step (instant update, no sleep).
+    Used during actual work to show progress in real-time.
+    """
+    vibe_messages = [
+        "🌐 Initiating 'Ghost Browser' session...",
+        "📡 Pinging server for response time...",
+        "👻 Simulating new visitor arrival...",
+        "📸 Scanning 'Above the Fold' area...",
+        "⏱️ Testing the 3-Second Rule (First Impression)...",
+        "🖼️ Analyzing Hero Image for emotional impact...",
+        "📝 Reading Headline (checking for 'boring' keywords)...",
+        "🎯 Hunting for the Call-to-Action (CTA)...",
+        "🔍 Checking CTA contrast and visibility...",
+        "📜 Scrolling down... analyzing User Flow...",
+        "✍️ Reading copy for jargon vs. benefits...",
+        "🛡️ Looking for Trust Signals (Testimonials/Logos)...",
+        "🎨 Scanning visuals (Visual Hierarchy, Aesthetics, CTAs, Trust, Mobile)...",
+        "👁️ Simulating eye-tracking patterns (Heatmap generation)...",
+        "✍️ Roasting your copy (Headline, Value Prop, Tone, One Page One Goal)...",
+        "📱 Checking Mobile Responsiveness logic...",
+        "⚡ Checking speed & legal stuff (Page Speed, SEO Tags, Compliance)...",
+        "⚖️ Verifying Legal compliance (Privacy/Terms links)...",
+        "📊 Generating witty roast summary...",
+        "🔥 Calculating final Roast Score..."
+    ]
+    
+    if step_index < len(vibe_messages):
+        progress = int((step_index + 1) / total_steps * 90)  # 0-90%
+        message = vibe_messages[step_index]
+        status.markdown(f'<p style="text-align: center; font-size: 1.1rem; color: #667eea;">{message}</p>', unsafe_allow_html=True)
+        bar.progress(progress)
+    elif step_index >= total_steps:
+        # Finale (90-100%)
+        status.markdown('<p style="text-align: center; font-size: 1.3rem; font-weight: bold; color: #764ba2;">✨ The wait is over. Finalizing your report...</p>', unsafe_allow_html=True)
+        bar.progress(min(100, 90 + (step_index - total_steps) * 2))
+
+class ProgressManager:
+    """Manages progress bar updates during async operations"""
+    def __init__(self, bar, status):
+        self.bar = bar
+        self.status = status
+        self.current_step = 0
+    
+    def update(self, step):
+        """Update to specific step"""
+        self.current_step = step
+        update_vibe_progress(self.bar, self.status, step)
+    
+    def advance(self):
+        """Advance to next step"""
+        self.current_step += 1
+        update_vibe_progress(self.bar, self.status, self.current_step)
+    
+    def finalize(self):
+        """Show completion message"""
+        update_vibe_progress(self.bar, self.status, 21)
+        time.sleep(0.5)
+        self.bar.empty()
+        self.status.empty()
+
+async def quick_scan(url: str):
+    """
+    Light scraper: Fast scan without screenshots.
+    Returns: dict with page_height, price_guess, industry_guess
+    """
+    try:
+        if not url.startswith(('http://', 'https://')):
+            url = url.replace('www.', '')
+            url = 'https://' + url
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                viewport={'width': 1440, 'height': 900},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            )
+            page = await context.new_page()
+            
+            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            await asyncio.sleep(2)
+            
+            page_height = await page.evaluate("document.body.scrollHeight")
+            page_text = await page.evaluate("document.body.innerText")
+            title = await page.evaluate("document.title")
+            
+            meta_desc = ""
+            try:
+                meta_desc = await page.evaluate("document.querySelector('meta[name=\"description\"]')?.content || ''")
+            except:
+                pass
+            
+            await browser.close()
+            
+            price_pattern = r'\$(\d+(?:\.\d{2})?)(?:\s*/\s*(?:mo|month|yr|year|wk|week))?'
+            prices = re.findall(price_pattern, page_text, re.IGNORECASE)
+            
+            price_values = []
+            for price_str in prices:
+                try:
+                    price_val = float(price_str)
+                    if 1 <= price_val <= 10000:
+                        price_values.append(price_val)
+                except:
+                    continue
+            
+            price_guess = 50.0
+            if price_values:
+                price_values.sort()
+                median_idx = len(price_values) // 2
+                price_guess = price_values[median_idx]
+            
+            industry_guess = 'SaaS'
+            text_lower = (page_text + " " + title + " " + meta_desc).lower()
+            
+            if any(kw in text_lower for kw in ['agency', 'marketing agency', 'digital agency']):
+                industry_guess = 'Agency'
+            elif any(kw in text_lower for kw in ['e-commerce', 'ecommerce', 'shop', 'store', 'cart', 'checkout']):
+                industry_guess = 'E-commerce'
+            elif any(kw in text_lower for kw in ['saas', 'software', 'subscription', 'platform']):
+                industry_guess = 'SaaS'
+            
+            return {
+                'page_height': page_height,
+                'price_guess': price_guess,
+                'industry_guess': industry_guess
+            }
+    except Exception as e:
+        safe_print(f"[ERROR] quick_scan failed: {safe_error_message(str(e))}")
+        return {
+            'page_height': 3000,
+            'price_guess': 50.0,
+            'industry_guess': 'SaaS'
+        }
+
+def render_roi_dashboard(url: str, scan_data: dict = None):
+    """
+    Render the ROI & Competitor Audit as a Single-Screen Dashboard (3x2 Grid Layout).
+    Takes URL and optional scan_data (if already scanned).
+    """
+    if scan_data is None:
+        if "roi_dashboard_data" in st.session_state:
+            scan_data = st.session_state.roi_dashboard_data
+        else:
+            st.warning("Scanning in progress...")
+            return
+    
+    page_height = scan_data.get('page_height', 3000)
+    default_price = scan_data.get('price_guess', 50.0)
+    default_industry = scan_data.get('industry_guess', 'SaaS')
+    
+    st.markdown("""
+    <style>
+    .roi-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    .roi-card h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        font-size: 1.2rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    default_traffic = 1000
+    if "roi_traffic" in st.session_state:
+        default_traffic = st.session_state.roi_traffic
+    if "roi_price" in st.session_state:
+        default_price = st.session_state.roi_price
+    
+    price = st.session_state.get("roi_price", default_price)
+    traffic = st.session_state.get("roi_traffic", default_traffic)
+    industry = st.session_state.get("roi_industry", default_industry)
+    
+    lift = 0.02
+    lost_revenue = (traffic * lift * price * 12)
+    
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    
+    with row1_col1:
+        st.markdown('<div class="roi-card">', unsafe_allow_html=True)
+        st.markdown("### 💸 The Cost of Inaction")
+        st.markdown(f'<div style="font-size: 2.4rem; font-weight: 700; color: #667eea; margin: 0.5rem 0;">${lost_revenue:,.0f}</div>', unsafe_allow_html=True)
+        st.caption("Revenue you leave on the table annually")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with row1_col2:
+        st.markdown('<div class="roi-card">', unsafe_allow_html=True)
+        fold_height = 800
+        below_fold = max(0, page_height - fold_height)
+        below_fold_percent = (below_fold / page_height * 100) if page_height > 0 else 0
+        st.markdown(f"### 📉 The Scroll of Death  \n<small style='color: #64748b;'>Your page is {page_height:,}px deep. {below_fold_percent:.0f}% of users never see your bottom CTA.</small>", unsafe_allow_html=True)
+        
+        scroll_html = f"""
+        <div style="position: relative; width: 100%; height: 200px; border: 2px solid #333; border-radius: 8px; margin: 1rem 0;">
+            <div style="position: absolute; top: 0; left: 0; width: 100%; height: {min(100, (fold_height / page_height * 100))}%; background: linear-gradient(180deg, #00ff00 0%, #00cc00 100%); border-radius: 8px 8px 0 0;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 0.9rem;">Above Fold ({fold_height}px)</div>
+            </div>
+            <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: {max(0, (below_fold / page_height * 100))}%; background: linear-gradient(180deg, #ff0000 0%, #cc0000 100%); border-radius: 0 0 8px 8px;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 0.9rem;">Below Fold ({below_fold_percent:.0f}%)</div>
+            </div>
+            <div style="position: absolute; top: {min(100, (fold_height / page_height * 100))}%; left: 0; width: 100%; height: 2px; background: yellow; z-index: 10;"></div>
+        </div>
+        """
+        st.markdown(scroll_html, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with row1_col3:
+        st.markdown('<div class="roi-card">', unsafe_allow_html=True)
+        st.markdown("### 🥊 The Competitor Gap")
+        
+        # Calculate competitor traffic as a multiple of user traffic based on industry
+        # Industry-specific multipliers: SaaS (2.5x), Agency (3x), E-commerce (2x)
+        industry_multipliers = {
+            "SaaS": 2.5,
+            "Agency": 3.0,
+            "E-commerce": 2.0
+        }
+        multiplier = industry_multipliers.get(industry, 2.5)
+        competitor_traffic = int(traffic * multiplier)
+        
+        # Ensure minimum competitor traffic for visual clarity
+        if competitor_traffic < 1000:
+            competitor_traffic = 1000
+        
+        chart_data = pd.DataFrame({
+            'Source': ['You', 'Top Competitor'],
+            'Monthly Visits': [traffic, competitor_traffic]
+        })
+        
+        max_visits = max(traffic, competitor_traffic)
+        y_max = int(max_visits * 1.25)  # 25% headroom
+        
+        fig = px.bar(chart_data, x='Source', y='Monthly Visits',
+                     color='Source',
+                     color_discrete_map={'You': '#888888', 'Top Competitor': '#ff0000'},
+                     text='Monthly Visits',
+                     labels={'Monthly Visits': '', 'Source': ''})
+        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+        fig.update_layout(
+            showlegend=False,
+            height=200,
+            yaxis=dict(range=[0, y_max]),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=0, b=0)
+        )
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        
+        st.caption(f"Competitors get {multiplier:.1f}x your traffic.")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    row2_col1, row2_col2, row2_col3 = st.columns(3)
+    
+    with row2_col1:
+        st.markdown('<div class="roi-card">', unsafe_allow_html=True)
+        st.markdown("### 🧠 Industry Insider")
+        
+        industry_facts = {
+            'SaaS': [
+                'SaaS pages with video convert 80% higher',
+                'Top SaaS sites use social proof in hero section',
+                'SaaS landing pages with clear pricing convert 2.5x better'
+            ],
+            'Agency': [
+                'Agency sites with case studies convert 3x higher',
+                'Top agencies showcase client logos above fold',
+                'Agency pages with testimonials convert 60% better'
+            ],
+            'E-commerce': [
+                'E-com sites with trust badges convert 40% more',
+                'Product pages with reviews convert 2.8x better',
+                'E-com sites with free shipping convert 30% more'
+            ]
+        }
+        
+        facts = industry_facts.get(industry, industry_facts['SaaS'])
+        random_fact = random.choice(facts)
+        
+        st.info(f"💡 {random_fact}")
+        st.caption("You are missing critical elements found on top sites.")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with row2_col2:
+        st.markdown('<div class="roi-card">', unsafe_allow_html=True)
+        st.markdown("### 🚀 The No-Brainer ROI")
+        
+        cost = 19
+        roi_percent = (lost_revenue / cost * 100) if cost > 0 else 0
+        
+        st.markdown(f'<div style="font-size: 2.4rem; font-weight: 700; color: #667eea; margin: 0.5rem 0; text-align: center;">{roi_percent:,.0f}%</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="text-align: center; color: #64748b; margin-bottom: 0.5rem;">ROI</div>', unsafe_allow_html=True)
+        st.markdown(f'<p><strong>Spend:</strong> ${cost}<br><span style="font-size: 1.2em;"><strong>Recover:</strong></span> <span style="color: #667eea; font-weight: bold; font-size: 1.4em;">${lost_revenue:,.0f}</span></p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with row2_col3:
+        st.markdown('<div class="roi-card">', unsafe_allow_html=True)
+        st.markdown("### ⚙️ Price Detector")
+        
+        new_price = st.number_input("Detected Price ($)", min_value=1.0, max_value=10000.0, 
+                                    value=float(price), step=1.0, key="dashboard_price")
+        new_traffic = st.number_input("Monthly Traffic", min_value=100, max_value=1000000, 
+                                      value=int(traffic), step=100, key="dashboard_traffic")
+        new_industry = st.selectbox("Industry", ["SaaS", "Agency", "E-commerce"], 
+                                   index=["SaaS", "Agency", "E-commerce"].index(industry) if industry in ["SaaS", "Agency", "E-commerce"] else 0,
+                                   key="dashboard_industry")
+        
+        if new_price != price or new_traffic != traffic or new_industry != industry:
+            st.session_state.roi_price = new_price
+            st.session_state.roi_traffic = new_traffic
+            st.session_state.roi_industry = new_industry
+            st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+def render_roi_page():
+    """
+    Render the Free ROI Simulator page with shocking visuals.
+    """
+    st.markdown('<h1 class="main-title">💰 Free Revenue Check</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">See How Much Money Your Landing Page is Losing</p>', unsafe_allow_html=True)
+    
+    site_url = st.text_input("Enter your website URL", placeholder="https://example.com", key="roi_url")
+    
+    scan_data = None
+    if site_url and site_url.strip():
+        is_valid, error_msg = validate_url(site_url)
+        if not is_valid:
+            st.error(f"⚠️ {error_msg}")
+        else:
+            if st.button("🔍 Quick Scan", key="scan_button", use_container_width=True):
+                with st.spinner("Scanning your site (no screenshots, super fast)..."):
+                    try:
+                        if os.name == 'nt':
+                            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                        scan_data = asyncio.run(quick_scan(site_url))
+                        st.session_state.roi_scan_data = scan_data
+                    except Exception as e:
+                        st.error(f"Scan failed: {str(e)}")
+    
+    if "roi_scan_data" in st.session_state:
+        scan_data = st.session_state.roi_scan_data
+    
+    if scan_data:
+        page_height = scan_data.get('page_height', 3000)
+        default_price = scan_data.get('price_guess', 50.0)
+        default_industry = scan_data.get('industry_guess', 'SaaS')
+        
+        st.markdown("---")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            price = st.number_input("Product Price ($)", min_value=1.0, max_value=10000.0, value=float(default_price), step=1.0, key="roi_price")
+        with col2:
+            traffic = st.number_input("Monthly Traffic", min_value=100, max_value=1000000, value=1000, step=100, key="roi_traffic")
+        with col3:
+            industry = st.selectbox("Industry", ["SaaS", "Agency", "E-commerce"], index=["SaaS", "Agency", "E-commerce"].index(default_industry) if default_industry in ["SaaS", "Agency", "E-commerce"] else 0, key="roi_industry")
+        
+        lift = 0.015
+        lost_revenue = (traffic * lift * price * 12)
+        
+        st.markdown("---")
+        
+        st.markdown('<div style="background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%); padding: 2rem; border-radius: 12px; text-align: center; margin: 2rem 0;">', unsafe_allow_html=True)
+        st.markdown(f'<h2 style="color: white; font-size: 3rem; margin: 0;">⚠️ Estimated Yearly Loss: ${lost_revenue:,.0f}</h2>', unsafe_allow_html=True)
+        st.markdown(f'<p style="color: #ffcccc; font-size: 1.2rem; margin-top: 1rem;">Based on your detected price of ${price:.2f} and avg industry traffic of {traffic:,} visitors/month</p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        st.markdown("### 📏 The 'Underworld' Scroll Visualizer")
+        
+        money_zone_height = 1500
+        underworld_start = money_zone_height
+        underworld_height = max(0, page_height - money_zone_height)
+        underworld_percent = (underworld_height / page_height * 100) if page_height > 0 else 0
+        
+        st.markdown(f"**Your page is {page_height:,}px long. {underworld_percent:.0f}% of your content is in the Underworld where <5% of users go.**")
+        
+        progress_html = f"""
+        <div style="position: relative; width: 100%; height: 400px; border: 2px solid #333; border-radius: 8px; margin: 1rem 0;">
+            <div style="position: absolute; top: 0; left: 0; width: 100%; height: {min(100, (money_zone_height / page_height * 100))}%; background: linear-gradient(180deg, #00ff00 0%, #00cc00 100%); border-radius: 8px 8px 0 0;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 1.2rem;">Money Zone (Top {money_zone_height}px)</div>
+            </div>
+            <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: {max(0, (underworld_height / page_height * 100))}%; background: linear-gradient(180deg, #ff0000 0%, #cc0000 100%); border-radius: 0 0 8px 8px;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 1.2rem;">The Underworld ({underworld_percent:.0f}%)</div>
+            </div>
+            <div style="position: absolute; top: {min(100, (money_zone_height / page_height * 100))}%; left: 0; width: 100%; height: 2px; background: yellow; z-index: 10;">
+                <div style="position: absolute; left: 50%; transform: translateX(-50%); background: yellow; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold;">{money_zone_height}px Marker</div>
+            </div>
+        </div>
+        """
+        st.markdown(progress_html, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        st.markdown("### 📊 The 'Jealousy' Graph (Competitors)")
+        
+        competitor_traffic = 8500 if industry == "SaaS" else (12000 if industry == "Agency" else 6000)
+        
+        chart_data = pd.DataFrame({
+            'Source': ['You', 'Top Competitor'],
+            'Monthly Visits': [traffic, competitor_traffic],
+            'Color': ['#888888', '#ff0000']
+        })
+        
+        max_visits = max(traffic, competitor_traffic)
+        y_max = int(max_visits * 1.25)  # 25% headroom
+        
+        fig = px.bar(chart_data, x='Source', y='Monthly Visits', 
+                     color='Source',
+                     color_discrete_map={'You': '#888888', 'Top Competitor': '#ff0000'},
+                     text='Monthly Visits',
+                     labels={'Monthly Visits': 'Monthly Visits', 'Source': ''})
+        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            yaxis=dict(range=[0, y_max]),
+            yaxis_title="Monthly Visits",
+            xaxis_title="",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        multiplier = competitor_traffic / traffic if traffic > 0 else 1
+        st.markdown(f"**Top {industry} players get {multiplier:.1f}x your traffic. A better landing page captures this demand.**")
+        
+        st.markdown("---")
+        
+        st.markdown("### 💎 The 'No-Brainer' CTA")
+        
+        st.markdown('<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 12px; text-align: center; margin: 2rem 0;">', unsafe_allow_html=True)
+        st.markdown('<h2 style="color: white; margin: 0 0 1rem 0; font-size: 1.44em;">Recover this revenue for $19</h2>', unsafe_allow_html=True)
+        
+        roi_percent = (lost_revenue / 19 * 100) if 19 > 0 else 0
+        st.markdown(f'<p style="color: white; font-size: 1.1rem; margin: 0.5rem 0;"><strong>Cost:</strong> $19 | <strong>Potential Gain:</strong> <span style="font-size: 1.2em; font-weight: bold;">${lost_revenue:,.0f}</span> | <strong>ROI:</strong> <span style="font-size: 1.2em; font-weight: bold;">{roi_percent:.0f}%</span></p>', unsafe_allow_html=True)
+        
+        if st.button("🚀 Unlock Full Audit Now", key="upgrade_cta", use_container_width=True):
+            st.session_state.page_mode = "full_audit"
+            st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.info("👆 Enter a URL and click 'Quick Scan' to see your revenue loss estimate")
+
+def stitch_images(image_list, max_images=3):
+    """
+    Stitch multiple images vertically (top to bottom).
+    Takes first N images from the list.
+    Returns: Single PIL Image
+    """
+    try:
+        images_to_stitch = image_list[:min(len(image_list), max_images)]
+        if not images_to_stitch:
+            return None
+        
+        # Convert all to RGB and get dimensions
+        rgb_images = [img.convert('RGB') for img in images_to_stitch]
+        
+        # Calculate total dimensions
+        max_width = max(img.width for img in rgb_images)
+        total_height = sum(img.height for img in rgb_images)
+        
+        # Create new image
+        stitched = Image.new('RGB', (max_width, total_height))
+        
+        # Paste images vertically
+        current_y = 0
+        for img in rgb_images:
+            stitched.paste(img, (0, current_y))
+            current_y += img.height
+        
+        safe_print(f"[DEBUG] Stitched {len(rgb_images)} images into {max_width}x{total_height}px")
+        return stitched
+    except Exception as e:
+        error_msg = safe_error_message(e)
+        print(f"[ERROR] Image stitching failed: {error_msg}")
+        return image_list[0] if image_list else None
+
+def generate_heatmap(image_pil):
+    """
+    Generate a predictive focus heatmap using Visual Saliency detection.
+    Shows areas of high visual contrast/clutter.
+    Returns: PIL Image with heatmap overlay
+    """
+    try:
+        # Convert PIL to CV2
+        img_array = np.array(image_pil.convert('RGB'))
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        
+        # Apply Canny edge detection to find high-contrast areas (bright spots)
+        edges = cv2.Canny(gray, 50, 150)
+        
+        # Blur edges to create heat effect (visual saliency)
+        blurred = cv2.GaussianBlur(edges, (21, 21), 0)
+        
+        # Normalize to 0-255 range
+        heatmap = cv2.normalize(blurred, None, 0, 255, cv2.NORM_MINMAX)
+        
+        # Apply color map (hot areas = red/yellow, cold = blue/green)
+        heatmap_colored = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+        
+        # Convert back to PIL
+        heatmap_pil = Image.fromarray(cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB))
+        
+        # Blend with original (50% opacity for overlay effect)
+        result = Image.blend(image_pil.convert('RGB'), heatmap_pil, alpha=0.5)
+        
+        return result
+    except Exception as e:
+        error_msg = safe_error_message(e)
+        print(f"[ERROR] Heatmap generation failed: {error_msg}")
+        return image_pil  # Return original if heatmap fails
+
+class PDFReport(FPDF):
+    """
+    Custom PDF Report with branded header/footer and proper text wrapping.
+    Uses DejaVuSans font for Unicode/emoji support, falls back to Arial if not available.
+    """
+    def __init__(self):
+        super().__init__()
+        # Set margins: 15mm all sides (standard)
+        self.set_margins(15, 15, 15)
+        # Set auto page break with bottom margin
+        self.set_auto_page_break(auto=True, margin=15)
+        # Calculate usable width: A4 width (210mm) - margins (30mm total) = 180mm
+        self.usable_width = 180
+        # Brand colors
+        self.primary_color = (103, 58, 255)  # Purple/Indigo
+        self.success_color = (0, 150, 0)      # Green
+        self.fail_color = (200, 0, 0)         # Red
+        self.warn_color = (255, 140, 0)       # Orange
+        
+        # Flag to control header visibility on cover page
+        self.is_cover_page = False
+        
+        # Try to use DejaVuSans (Unicode font), fallback to Arial
+        # Note: DejaVuSans needs to be added via add_font() if available
+        # For now, we'll use Arial but clean text before adding to PDF
+        self.font_name = 'Arial'  # Default font
+        try:
+            # Try to add DejaVuSans if available (requires font files)
+            # For now, we'll clean text instead
+            pass
+        except:
+            pass
+    
+    def header(self):
+        """Branded header on every page"""
+        # Skip header on cover page
+        if self.is_cover_page:
+            return
+        
+        # Draw border
+        self.set_line_width(0.5)
+        self.set_draw_color(*self.primary_color)
+        self.rect(10, 10, 190, 277)  # A4 border
+        
+        # Brand text (use Arial, text is already cleaned)
+        self.set_font('Arial', 'B', 10)
+        self.set_text_color(150, 150, 150)
+        self.set_xy(15, 15)
+        self.cell(0, 10, 'SiteRoast Conversion Audit Report', 0, 0, 'L')
+        self.set_text_color(0, 0, 0)  # Reset
+        self.ln(15)
+    
+    def footer(self):
+        """Branded footer with page number"""
+        self.set_y(-20)
+        self.set_font('Arial', 'I', 9)  # Footer uses Arial (text is cleaned)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+    
+    def add_cover_page(self, metadata, score):
+        """Cover page with proper spacing and breathing room - vertically centered"""
+        self.add_page()
+        self.is_cover_page = True  # Turn off header
+        
+        # Vertical Center Calculation (Page Height ~297mm)
+        self.set_y(110)
+        
+        # Title
+        self.set_font("Helvetica", "B", 28)
+        self.set_text_color(31, 33, 33)
+        self.cell(0, 15, "SiteRoast Conversion Audit Report", ln=True, align="C")
+        self.ln(10)
+        
+        # Client Info
+        self.set_font("Helvetica", "", 14)
+        self.set_text_color(98, 108, 113)
+        scanned_url = clean_text_for_pdf(str(metadata.get('scannedUrl', 'N/A')))
+        scanned_at = clean_text_for_pdf(str(metadata.get('scannedAt', 'N/A')))
+        self.cell(0, 8, f"Client: {scanned_url}", ln=True, align="C")
+        self.cell(0, 8, f"Generated: {scanned_at}", ln=True, align="C")
+        
+        # Reset flag for next pages
+        self.is_cover_page = False
+    
+    def add_roast_section(self, roast_data, overall_score, detailed_audit=None):
+        """Executive summary section with proper text wrapping - Page 2"""
+        self.add_page()  # Force Page 2
+        
+        # Header
+        self.set_font("Helvetica", "B", 16)
+        self.set_text_color(31, 33, 33)
+        self.cell(0, 10, "Executive Summary", ln=True)
+        self.ln(5)
+        
+        # Score Badge
+        self.set_fill_color(240, 240, 240)
+        self.set_font("Helvetica", "B", 14)
+        score_text = clean_text_for_pdf(f"  Site Score: {overall_score}/100  ")
+        self.cell(0, 12, score_text, ln=True, fill=True)
+        self.ln(10)
+        
+        # Content (Handle Blank Data) - Split text by \n to create paragraphs
+        summary_text = roast_data.get('analysis', '') or roast_data.get('broadRoast', '') or roast_data.get('roastAnalysis', '') or roast_data.get('executiveSummary', 'Analysis pending...')
+        cleaned_text = clean_text_for_pdf(str(summary_text))
+        
+        # Split by newlines to create paragraphs
+        paragraphs = cleaned_text.split('\n')
+        
+        self.set_font("Helvetica", "", 11)
+        for para in paragraphs:
+            para = para.strip()
+            if para:
+                self.multi_cell(0, 6, para)
+                self.ln(3)  # Space between paragraphs
+        
+        self.ln(10)
+        
+        # Priority Matrix and Status Table
+        if detailed_audit:
+            # Flatten all items from detailedAudit
+            all_items = []
+            for category, items in detailed_audit.items():
+                if isinstance(items, list):
+                    all_items.extend(items)
+            
+            # Add Priority Matrix
+            self.add_priority_matrix(all_items)
+            self.ln(10)
+            
+            # Add Status Summary Table
+            self.add_status_table(all_items)
+    
+    def add_priority_matrix(self, all_items):
+        """Priority Matrix (The 'Where to Start' Grid) - 3x5 grid showing Impact vs Status"""
+        # Group items by Impact and Status
+        matrix = {}
+        impact_levels = ['HI', 'MI', 'LI']
+        status_levels = ['Failed', 'Needs Improvement', 'Satisfactory', 'Good', 'Excellent']
+        
+        # Initialize matrix
+        for impact in impact_levels:
+            matrix[impact] = {}
+            for status in status_levels:
+                matrix[impact][status] = 0
+        
+        # Count items in each bucket
+        for item in all_items:
+            impact = item.get('impact', 'MI')
+            status = item.get('status', 'Satisfactory')
+            if impact in matrix and status in matrix[impact]:
+                matrix[impact][status] += 1
+        
+        # Draw matrix title
+        self.set_font("Helvetica", "B", 12)
+        self.set_text_color(31, 33, 33)
+        self.cell(0, 8, "Priority Matrix: Where to Start", ln=True)
+        self.ln(3)
+        
+        # Matrix dimensions
+        cell_width = 180 / 6  # 5 status columns + 1 impact label column
+        cell_height = 6
+        start_x = 15
+        start_y = self.get_y()
+        
+        # Draw header row (Status labels)
+        self.set_font("Helvetica", "B", 9)
+        self.set_text_color(31, 33, 33)
+        x_pos = start_x + cell_width  # Skip first column (for impact labels)
+        
+        # Shortened status labels for fit (must match status_levels order)
+        status_labels_display = ['Failed', 'Needs Imp.', 'Satisf.', 'Good', 'Excellent']
+        for i, status_label in enumerate(status_labels_display):
+            self.set_xy(x_pos + (i * cell_width), start_y)
+            self.set_fill_color(240, 240, 240)
+            self.cell(cell_width, cell_height, clean_text_for_pdf(status_label), border=1, fill=True, align='C')
+        
+        # Draw matrix rows (Impact levels)
+        impact_labels = ['High', 'Medium', 'Low']
+        impact_map = {'HI': 0, 'MI': 1, 'LI': 2}
+        
+        for impact_code, impact_row in impact_map.items():
+            row_y = start_y + cell_height + (impact_row * cell_height)
+            
+            # Impact label (left column)
+            self.set_xy(start_x, row_y)
+            self.set_fill_color(245, 245, 245)
+            self.set_font("Helvetica", "B", 9)
+            self.cell(cell_width, cell_height, clean_text_for_pdf(impact_labels[impact_row]), border=1, fill=True, align='C')
+            
+            # Status cells (counts) - iterate through status_levels in same order
+            self.set_font("Helvetica", "", 9)
+            x_pos = start_x + cell_width
+            for i, status in enumerate(status_levels):
+                count = matrix[impact_code][status]
+                
+                # Highlight High Impact + Failed in Red
+                if impact_code == 'HI' and status == 'Failed':
+                    self.set_fill_color(255, 200, 200)  # Light red
+                elif count > 0:
+                    self.set_fill_color(255, 255, 255)  # White
+                else:
+                    self.set_fill_color(250, 250, 250)  # Very light gray
+                
+                self.set_xy(x_pos + (i * cell_width), row_y)
+                count_text = str(count) if count > 0 else '-'
+                self.cell(cell_width, cell_height, clean_text_for_pdf(count_text), border=1, fill=True, align='C')
+        
+        # Move cursor below matrix
+        self.set_y(start_y + (4 * cell_height))
+        self.ln(3)
+    
+    def add_status_table(self, all_items):
+        """Status Summary Table - Dashboard-style table with colored cells"""
+        # Count items by status
+        status_counts = {
+            'Excellent': 0,
+            'Good': 0,
+            'Satisfactory': 0,
+            'Needs Improvement': 0,
+            'Failed': 0
+        }
+        
+        for item in all_items:
+            status = item.get('status', 'Satisfactory')
+            if status in status_counts:
+                status_counts[status] += 1
+        
+        # Draw table
+        table_width = 180
+        num_cols = 5
+        col_width = table_width / num_cols
+        table_height = 8
+        table_x = 15
+        table_y = self.get_y()
+        
+        # Status labels and colors
+        status_config = [
+            ('Failed', status_counts.get('Failed', 0), (255, 200, 200)),  # Red
+            ('Needs Work', status_counts.get('Needs Improvement', 0), (255, 230, 200)),  # Orange
+            ('Satisfactory', status_counts.get('Satisfactory', 0), (240, 240, 240)),  # Gray
+            ('Good', status_counts.get('Good', 0), (200, 255, 200)),  # Light green
+            ('Excellent', status_counts.get('Excellent', 0), (150, 255, 150))  # Green
+        ]
+        
+        self.set_font("Helvetica", "B", 10)
+        for i, (label, count, color) in enumerate(status_config):
+            x_pos = table_x + (i * col_width)
+            self.set_xy(x_pos, table_y)
+            self.set_fill_color(*color)
+            self.set_draw_color(200, 200, 200)
+            
+            # Format: "Label: Count"
+            cell_text = clean_text_for_pdf(f"{label}: {count}")
+            self.cell(col_width, table_height, cell_text, border=1, fill=True, align='C')
+        
+        # Move cursor below table
+        self.set_y(table_y + table_height)
+        self.ln(5)
+    
+    def add_visuals_section(self, heatmap_path):
+        """Visual analysis section with proper image placement - Page 3 - Centered Heatmap"""
+        self.add_page()
+        
+        # Root Cause Analysis: Multiple path resolution strategies
+        verified_path = None
+        
+        if heatmap_path:
+            # Strategy 1: Try absolute path as-is
+            try:
+                if os.path.exists(heatmap_path):
+                    verified_path = heatmap_path
+            except:
+                pass
+            
+            # Strategy 2: Try converting to absolute path
+            if not verified_path:
+                try:
+                    abs_path = os.path.abspath(heatmap_path)
+                    if os.path.exists(abs_path):
+                        verified_path = abs_path
+                except:
+                    pass
+            
+            # Strategy 3: Try joining with current working directory if relative
+            if not verified_path:
+                try:
+                    cwd_path = os.path.join(os.getcwd(), heatmap_path)
+                    if os.path.exists(cwd_path):
+                        verified_path = cwd_path
+                except:
+                    pass
+            
+            # Strategy 4: Try normalizing path (handles forward/backward slashes)
+            if not verified_path:
+                try:
+                    norm_path = os.path.normpath(heatmap_path)
+                    if os.path.exists(norm_path):
+                        verified_path = norm_path
+                    else:
+                        # Try with absolute
+                        abs_norm = os.path.abspath(norm_path)
+                        if os.path.exists(abs_norm):
+                            verified_path = abs_norm
+                except:
+                    pass
+        
+        if verified_path:
+            # Center Image Logic
+            # Page width 210mm, Height 297mm
+            img_w = 180
+            page_width = 210
+            
+            # Start at top with proper margin
+            self.set_y(30)  # Clear header margin
+            
+            # Title first
+            self.set_font("Helvetica", "B", 14)
+            self.set_text_color(31, 33, 33)
+            title_y = self.get_y()
+            self.cell(0, 10, "Visual Analysis (Heatmap)", ln=True, align="C")
+            
+            # Calculate centered X position
+            x_pos = (page_width - img_w) / 2
+            
+            # Get image dimensions to calculate proper height
+            img_h = 180  # Default fallback height
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(verified_path)
+                img_width, img_height = img.size
+                aspect_ratio = img_height / img_width
+                img_h = img_w * aspect_ratio
+                
+                # Ensure image doesn't exceed page height (with margins)
+                max_height = 240  # 297 - 30 (top) - 27 (bottom)
+                if img_h > max_height:
+                    img_h = max_height
+                    img_w = img_h / aspect_ratio
+                    x_pos = (page_width - img_w) / 2
+            except Exception:
+                # Fallback if PIL fails - use default img_h = 180
+                pass
+            
+            # Place image with proper Y positioning (after title)
+            img_y = title_y + 15
+            self.image(verified_path, x=x_pos, y=img_y, w=img_w)
+            
+            # Move cursor below image
+            self.set_y(img_y + img_h + 10)
+        else:
+            # Heatmap Not Available - centered message with debugging info
+            self.set_y(130)
+            self.set_font("Helvetica", "I", 12)
+            self.set_text_color(128, 128, 128)
+            self.cell(0, 10, "[Heatmap Not Available]", ln=True, align="C")
+            
+            # Debug info (only in development, can be removed in production)
+            if heatmap_path:
+                self.set_font("Helvetica", "", 8)
+                debug_text = f"Path attempted: {str(heatmap_path)[:50]}"
+                self.cell(0, 6, clean_text_for_pdf(debug_text), ln=True, align="C")
+    
+    def add_quick_wins(self, quick_wins):
+        """Quick wins section with card-style formatting"""
+        self.add_page()
+        self.set_font("Helvetica", "B", 14)
+        self.cell(0, 10, "Top 3 Quick Wins", ln=True)
+        self.ln(5)
+        
+        for idx, win in enumerate(quick_wins[:3], 1):
+            self.set_fill_color(245, 245, 245)
+            self.set_draw_color(200, 200, 200)
+            self.set_font("Helvetica", "B", 11)
+            
+            title = win.get('elementName', win.get('title', 'Issue'))
+            cleaned_title = clean_text_for_pdf(str(title))
+            header_text = clean_text_for_pdf(f" #{idx}: {cleaned_title}")
+            self.cell(0, 10, header_text, ln=True, border=1, fill=True)
+            
+            self.set_font("Helvetica", "", 10)
+            fix_text = win.get('fix', {}).get('quickFix', 'N/A') if isinstance(win.get('fix'), dict) else str(win.get('fix', 'N/A'))
+            cleaned_fix = clean_text_for_pdf(str(fix_text))
+            fix_label_text = clean_text_for_pdf(f"Fix: {cleaned_fix}")
+            self.multi_cell(0, 8, fix_label_text, border='LRB')
+            
+            self.ln(5)
+    
+    def audit_card(self, item):
+        """
+        Professional audit card layout for individual audit items.
+        Structure: Header (elementName + Status/Impact badge) -> Rationale -> Findings (Working/Broken) -> Fix box
+        """
+        # Keep Together Logic: Calculate height dynamically (Smarter Page Breaks)
+        element_name = str(item.get('element', item.get('elementName', 'Element')))
+        rationale_text = str(item.get('rationale', ''))
+        working = item.get('working', item.get('workingWell', []))
+        not_working = item.get('not_working', item.get('notWorking', []))
+        fix_obj = item.get('fix', {})
+        fix_text = fix_obj.get('quickFix', '') if isinstance(fix_obj, dict) else str(fix_obj)
+        fix_text = fix_text.strip() if fix_text else ''
+        
+        # Use FPDF's get_string_width for accurate text measurement
+        line_height = 5
+        self.set_font("Helvetica", "B", 12)
+        
+        # Header height (element name + badge)
+        element_name_clean = clean_text_for_pdf(element_name)
+        name_width = self.get_string_width(element_name_clean)
+        header_height = 10  # Base line height
+        # If name is too wide, it will wrap to next line
+        if name_width > (self.usable_width - 80):
+            header_height += 8
+        header_height += 10  # Badge line + spacing
+        
+        # Rationale height: Calculate lines based on actual width
+        rationale_height = 0
+        if rationale_text:
+            self.set_font("Helvetica", "I", 10)
+            rationale_clean = clean_text_for_pdf(str(rationale_text))
+            # Estimate lines: approximate average char width (Helvetica 10pt = ~2.8mm per char)
+            avg_char_width = 2.8
+            text_width = len(rationale_clean) * avg_char_width
+            lines_rationale = max(1, int(text_width / self.usable_width) + 1)
+            rationale_height = (lines_rationale * line_height) + 3
+        
+        # Working items height (label + list items)
+        working_height = 0
+        if working:
+            # Label (6mm) + items (5mm each) + spacing
+            working_height = 6 + (len(working[:5]) * line_height) + 2
+        
+        # Not working items height
+        not_working_height = 0
+        if not_working:
+            not_working_height = 6 + (len(not_working[:5]) * line_height) + 2
+        
+        # Fix box height
+        fix_height = 0
+        if len(fix_text) > 5:
+            self.set_font("Helvetica", "", 10)
+            fix_clean = clean_text_for_pdf(str(fix_text))
+            # Estimate lines for fix text (border adds extra height)
+            avg_char_width = 2.8
+            text_width = len(fix_clean) * avg_char_width
+            lines_fix = max(1, int(text_width / self.usable_width) + 1)
+            fix_height = 8 + (lines_fix * 6) + 12  # Label + text lines + border padding
+        
+        # Total required height with safety margin
+        required_height = header_height + rationale_height + working_height + not_working_height + fix_height + 5
+        
+        # Check if card will fit on current page
+        page_bottom = 275  # 297mm page height - 22mm footer margin
+        current_y = self.get_y()
+        if current_y + required_height > page_bottom:
+            self.add_page()
+        
+        # Header: ElementName (Bold, 12pt) and Status/Impact Badge on same line
+        self.set_font("Helvetica", "B", 12)
+        self.set_text_color(31, 33, 33)
+        
+        element_name = clean_text_for_pdf(element_name)
+        status = clean_text_for_pdf(str(item.get('status', 'Unknown')))
+        impact_raw = item.get('impact', 'MI')
+        
+        # Humanize Impact (Fix 'MI' Labels)
+        impact_map = {'HI': 'High Impact', 'MI': 'Medium Impact', 'LI': 'Low Impact'}
+        readable_impact = impact_map.get(impact_raw, 'Medium Impact')
+        impact = clean_text_for_pdf(readable_impact)
+        
+        # Ensure we start at left margin
+        self.set_x(15)
+        
+        # Print element name
+        name_width = self.get_string_width(element_name)
+        # Check if name fits, if not, use multi_cell
+        if name_width > self.usable_width - 80:  # Leave more space for longer impact text
+            self.multi_cell(self.usable_width - 80, 8, element_name, 0, 'L')
+            self.set_x(15)  # Reset after multi_cell
+        else:
+            self.cell(name_width, 8, element_name, ln=0)
+        
+        # Status/Impact Badge (colored) - using humanized impact
+        badge_text = clean_text_for_pdf(f" [{status} | {readable_impact}]")
+        if status in ["Failed", "Needs Improvement"]:
+            self.set_text_color(*self.fail_color)
+        elif status == "Excellent":
+            self.set_text_color(*self.success_color)
+        else:
+            self.set_text_color(*self.warn_color)
+        
+        self.set_font("Helvetica", "", 10)
+        badge_width = self.get_string_width(badge_text)
+        # Check if badge fits on same line
+        current_x = self.get_x()
+        if current_x + badge_width <= 195:  # Right margin (15mm + 180mm = 195mm)
+            self.cell(badge_width, 8, badge_text, ln=True)
+        else:
+            # Move to next line if badge doesn't fit
+            self.ln(8)
+            self.set_x(15)
+            self.cell(badge_width, 8, badge_text, ln=True)
+        self.set_text_color(31, 33, 33)
+        self.ln(2)
+        
+        # Rationale: Italics, Grey, 10pt
+        rationale = clean_text_for_pdf(str(item.get('rationale', '')))
+        if rationale:
+            self.set_x(15)  # Ensure left margin
+            self.set_font("Helvetica", "I", 10)
+            self.set_text_color(128, 128, 128)
+            self.multi_cell(self.usable_width, 5, rationale, 0, 'L')
+            self.set_text_color(31, 33, 33)
+            self.ln(3)
+        
+        # The Findings: Split Layout
+        # What's Working (Green Text)
+        working = item.get('working', item.get('workingWell', []))
+        if working:
+            self.set_x(15)  # Ensure left margin
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(*self.success_color)
+            self.cell(self.usable_width, 6, "What's Working:", ln=True)
+            self.set_text_color(31, 33, 33)
+            self.set_font("Helvetica", "", 9)
+            for w in working[:5]:  # Limit to 5 items
+                self.set_x(15)  # Ensure left margin for each bullet
+                w_text = clean_text_for_pdf(str(w))
+                bullet_text = clean_text_for_pdf(f"  - {w_text}")
+                self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
+            self.ln(2)
+        
+        # What's Broken (Red Text)
+        not_working = item.get('not_working', item.get('notWorking', []))
+        if not_working:
+            self.set_x(15)  # Ensure left margin
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(*self.fail_color)
+            self.cell(self.usable_width, 6, "What's Broken:", ln=True)
+            self.set_text_color(31, 33, 33)
+            self.set_font("Helvetica", "", 9)
+            for nw in not_working[:5]:  # Limit to 5 items
+                self.set_x(15)  # Ensure left margin for each bullet
+                nw_text = clean_text_for_pdf(str(nw))
+                bullet_text = clean_text_for_pdf(f"  - {nw_text}")
+                self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
+            self.ln(2)
+        
+        # The Fix: Light grey box with Action Plan
+        fix_obj = item.get('fix', {})
+        fix_text = fix_obj.get('quickFix', '') if isinstance(fix_obj, dict) else str(fix_obj)
+        
+        # CRITICAL FIX: Strip whitespace and check length
+        fix_text = fix_text.strip() if fix_text else ''
+        
+        if len(fix_text) > 5:  # Only draw if real text exists
+            self.ln(2)
+            self.set_fill_color(249, 249, 249)
+            self.set_font("Arial", "B", 10)
+            self.set_text_color(31, 33, 33)
+            self.cell(0, 8, "Action Plan:", ln=True)
+            
+            self.set_font("Arial", "", 10)
+            cleaned_fix = clean_text_for_pdf(str(fix_text))
+            # Use border=1 to draw the box, but ensure text is inside
+            self.multi_cell(0, 6, cleaned_fix, border=1, fill=True)
+            self.ln(2)
+        
+        # Spacing: 5mm padding between cards
+        self.ln(5)
+
+def calculate_radar_from_sections(sections):
+    """
+    Calculate radar scores (0-100) from sections array.
+    Maps all detailed checks into 6 standardized buckets.
+    """
+    radar = {
+        "UX": [],
+        "Conversion": [],
+        "Copy": [],
+        "Visuals": [],
+        "Trust": [],
+        "Speed": []
+    }
+    
+    # Status to score mapping
+    status_scores = {
+        "Excellent": 90,
+        "Good": 75,
+        "Satisfactory": 60,
+        "Needs Improvement": 40,
+        "Failed": 20
+    }
+    
+    for section in sections:
+        section_name = section.get("name", "").lower()
+        section_score = section.get("score", 0)
+        items = section.get("items", [])
+        
+        # Map sections to radar metrics
+        if "ux" in section_name or "layout" in section_name:
+            # UX & Layout section -> UX metric
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    radar["UX"].append(score)
+            else:
+                radar["UX"].append(section_score)
+        
+        elif "conversion" in section_name or "funnel" in section_name:
+            # Conversion & Funnel section -> Conversion metric
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    radar["Conversion"].append(score)
+            else:
+                radar["Conversion"].append(section_score)
+        
+        elif "copy" in section_name or "messaging" in section_name:
+            # Copy & Messaging section -> Copy metric
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    radar["Copy"].append(score)
+            else:
+                radar["Copy"].append(section_score)
+        
+        elif "visual" in section_name or "brand" in section_name:
+            # Visuals & Brand section -> Visuals metric
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    radar["Visuals"].append(score)
+            else:
+                radar["Visuals"].append(section_score)
+        
+        elif "trust" in section_name or "credibility" in section_name:
+            # Trust & Credibility section -> Trust metric
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    radar["Trust"].append(score)
+            else:
+                radar["Trust"].append(section_score)
+        
+        elif "speed" in section_name or "technical" in section_name or "health" in section_name:
+            # Speed & Technical Health section -> Speed metric
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    radar["Speed"].append(score)
+            else:
+                radar["Speed"].append(section_score)
+        
+        elif "mobile" in section_name:
+            # Mobile Experience -> split between UX and Speed
+            if items:
+                for item in items:
+                    status = item.get("status", "Satisfactory")
+                    score = status_scores.get(status, 50)
+                    # Mobile UX items go to UX, mobile performance goes to Speed
+                    item_name = item.get("item", "").lower()
+                    if "speed" in item_name or "load" in item_name or "performance" in item_name:
+                        radar["Speed"].append(score)
+                    else:
+                        radar["UX"].append(score)
+            else:
+                # Split mobile score between UX and Speed
+                radar["UX"].append(section_score * 0.7)  # 70% UX
+                radar["Speed"].append(section_score * 0.3)  # 30% Speed
+    
+    # Calculate averages for each metric
+    result = {}
+    for metric in ["UX", "Conversion", "Copy", "Visuals", "Trust", "Speed"]:
+        scores = radar[metric]
+        if scores:
+            result[metric] = int(sum(scores) / len(scores))
+        else:
+            result[metric] = 50  # Default if no data
+    
+    return result
+
+def calculate_radar_from_categories(categories):
+    """
+    Calculate radar scores from legacy categories structure.
+    Maps category names to the 6 standardized metrics.
+    """
+    radar = {}
+    category_map = {
+        "UX": "UX",
+        "Conversion": "Conversion",
+        "Copy": "Copy",
+        "Visuals": "Visuals",
+        "Visual": "Visuals",
+        "Legal": "Trust",
+        "Trust": "Trust",
+        "Speed": "Speed"
+    }
+    
+    for cat in categories:
+        cat_name = cat.get("name", "")
+        score = cat.get("score", 50)
+        
+        # Map category to radar metric
+        for key, metric in category_map.items():
+            if key.lower() in cat_name.lower():
+                radar[metric] = score
+                break
+    
+    # Ensure all 6 metrics are present
+    required_metrics = ["UX", "Conversion", "Copy", "Visuals", "Trust", "Speed"]
+    for metric in required_metrics:
+        if metric not in radar:
+            radar[metric] = 50  # Default to 50 if missing
+    
+    return radar
+
+def clean_text_for_pdf(text):
+    """
+    Remove Unicode characters not supported by Arial/Helvetica fonts.
+    Replace common emojis with ASCII equivalents.
+    """
+    text = str(text)
+    # Replace common emojis
+    replacements = {
+        "✅": "[+]",
+        "❌": "[X]",
+        "⚠️": "[!]",
+        "🔥": "[*]",
+        "📊": "",
+        "🚀": "",
+        "👁️": "",
+        "🧱": "",
+        "🎨": "",
+        "💡": "",
+        "⚡": "",
+        "🔍": "",
+        "📸": "",
+        "🌐": "",
+        "📡": "",
+        "😼": "",  # Cat emoji that was causing the error
+    }
+    for emoji, replacement in replacements.items():
+        text = text.replace(emoji, replacement)
+    
+    # Remove any remaining non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('ascii')
+    
+    # Remove any remaining problematic characters (bullet points, special quotes, etc.)
+    problematic_chars = {
+        '•': '-',
+        '–': '-',
+        '—': '-',
+        ''': "'",
+        ''': "'",
+        '"': '"',
+        '"': '"',
+        '…': '...',
+    }
+    for char, replacement in problematic_chars.items():
+        text = text.replace(char, replacement)
+    
+    return text
+
+def safe_error_message(error, max_length=200):
+    """
+    Safely convert an error to a string that can be displayed without Unicode encoding issues.
+    This function ensures error messages don't contain emojis or Unicode that Windows can't handle.
+    """
+    try:
+        error_str = str(error)
+        # Clean the error message to remove Unicode characters
+        error_str = clean_text_for_pdf(error_str)
+        # Truncate if too long
+        if len(error_str) > max_length:
+            error_str = error_str[:max_length] + "..."
+        return error_str
+    except Exception:
+        # If even cleaning fails, return a safe fallback
+        return "An error occurred during processing. Please try again."
+
+def safe_print(*args, **kwargs):
+    """
+    Safe print function that handles Unicode characters on Windows.
+    Replaces emojis with ASCII equivalents before printing.
+    """
+    try:
+        # Convert all arguments to strings and clean them
+        cleaned_args = []
+        for arg in args:
+            if isinstance(arg, (str, bytes)):
+                cleaned = safe_error_message(str(arg), max_length=10000)
+                cleaned_args.append(cleaned)
+            else:
+                cleaned_args.append(str(arg))
+        
+        # Use the cleaned arguments for printing
+        print(*cleaned_args, **kwargs)
+    except Exception:
+        # If printing fails, try to print a safe fallback
+        try:
+            print("[Print error: Unable to display message]", **kwargs)
+        except:
+            pass  # If even that fails, silently continue
+
+def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_chart_path=None, stitched_heatmap_path=None):
+    """
+    Generate a PDF report from the audit JSON data.
+    
+    Args:
+        json_data: Dictionary containing the audit results
+        screenshot_path: Optional path to screenshot image file
+        site_url: Optional URL of the audited site (will extract base URL if full URL provided)
+        radar_chart_path: Optional path to radar chart image file
+    
+    Returns:
+        PDF bytes
+    """
+    pdf = PDFReport()
+    
+    # Extract base URL if full URL provided
+    base_url = None
+    if site_url:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(site_url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else site_url
+        except:
+            base_url = site_url
+    
+    # Prepare metadata for cover page
+    metadata = {
+        'scannedUrl': base_url or site_url or 'N/A',
+        'scannedAt': time.strftime('%B %d, %Y')
+    }
+    
+    # Prepare roast data for executive summary
+    roast_summary = json_data.get('roast_summary') or json_data.get('headline_roast', 'Analysis completed')
+    roast_data = {
+        'broadRoast': roast_summary,
+        'hook': json_data.get('headline_roast', ''),
+        'analysis': json_data.get('overview', {}).get('roastAnalysis', ''),
+        'roastAnalysis': json_data.get('overview', {}).get('roastAnalysis', ''),
+        'executiveSummary': json_data.get('overview', {}).get('executiveSummary', '')
+    }
+    
+    # Get overall score
+    overall_score = json_data.get('overall_score', json_data.get('overview', {}).get('overallScore', 50))
+    
+    # Get detailedAudit for status summary table
+    detailed_audit = json_data.get('detailedAudit', {})
+    
+    # Call new methods in order
+    pdf.add_cover_page(metadata, overall_score)
+    pdf.add_roast_section(roast_data, overall_score, detailed_audit)
+    pdf.add_visuals_section(stitched_heatmap_path)
+    
+    # Quick Wins section
+    quick_wins = json_data.get('quick_wins', [])
+    if quick_wins and len(quick_wins) > 0:
+        pdf.add_quick_wins(quick_wins)
+    
+    # --- PAGE 3: VISUAL CONTEXT (Hero Shot) ---
+    if screenshot_path and os.path.exists(screenshot_path):
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.set_text_color(*pdf.primary_color)
+        pdf.cell(pdf.usable_width, 10, "Landing Page Screenshot", 0, 1, 'L')
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(5)
+        
+        try:
+            # Open image to get dimensions
+            from PIL import Image as PILImage
+            img = PILImage.open(screenshot_path)
+            img_width, img_height = img.size
+            
+            # Calculate dimensions: Make it double height (or as much as fits)
+            # A4 height = 297mm, margins = 40mm total, title space ≈ 30mm
+            # Usable height ≈ 227mm
+            max_height_mm = 220  # Leave some margin
+            
+            # Calculate aspect ratio
+            aspect_ratio = img_width / img_height
+            
+            # Start with full width
+            display_width = pdf.usable_width
+            display_height = display_width / aspect_ratio
+            
+            # Double the height (or use max available)
+            target_height = min(max_height_mm, display_height * 2)
+            
+            # If target is taller, adjust width to maintain aspect ratio
+            if target_height > display_height:
+                display_height = target_height
+                display_width = display_height * aspect_ratio
+                # If wider than usable width, scale down
+                if display_width > pdf.usable_width:
+                    scale = pdf.usable_width / display_width
+                    display_width = pdf.usable_width
+                    display_height = display_height * scale
+            
+            # Center horizontally if narrower than usable width
+            x_offset = 20 + (pdf.usable_width - display_width) / 2 if display_width < pdf.usable_width else 20
+            
+            # Place image with proper spacing (y position is already set by pdf.ln(8))
+            current_y = pdf.get_y()
+            pdf.image(screenshot_path, x=x_offset, y=current_y, w=display_width)
+        except Exception as e:
+            pdf.set_font("Arial", '', 10)
+            error_msg = str(e)[:150]
+            pdf.multi_cell(pdf.usable_width, 8, f"Note: Could not load screenshot: {error_msg}", 0, 'L')
+    
+    # --- PAGE 4+: ELEMENT-BY-ELEMENT AUDIT (if available) ---
+    audit_items = json_data.get('audit_items', [])
+    if audit_items and len(audit_items) > 0:
+        # Split audit_items into pages (3-4 per page)
+        items_per_page = 3
+        for page_start in range(0, len(audit_items), items_per_page):
+            pdf.add_page()
+            if page_start == 0:
+                pdf.set_font("Arial", 'B', 18)
+                pdf.set_text_color(*pdf.primary_color)
+                pdf.cell(pdf.usable_width, 12, "Element-by-Element Audit", 0, 1, 'L')
+                pdf.set_text_color(0, 0, 0)
+                pdf.ln(3)
+            
+            page_items = audit_items[page_start:page_start + items_per_page]
+            for item in page_items:
+                # Use the new professional audit_card method
+                pdf.audit_card(item)
+                
+                # Add separator line between cards
+                pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+                pdf.ln(3)
+    
+    # --- PAGE N+: DEEP DIVES (God-Tier Schema) ---
+    categories = json_data.get('categories', [])
+    for cat in categories:
+        pdf.add_page()
+        # Title
+        pdf.set_font("Arial", 'B', 16)
+        cat_name = clean_text_for_pdf(cat.get('name', 'Unknown'))[:80]
+        cat_score = cat.get('score', 0)
+        pdf.multi_cell(pdf.usable_width, 10, f"{cat_name} (Score: {cat_score}/100)", 0, 'L')
+        
+        # Verdict & Impact
+        pdf.set_font("Arial", '', 11)
+        verdict = clean_text_for_pdf(cat.get('verdict', 'Unknown'))[:40]
+        impact = clean_text_for_pdf(cat.get('impact', 'Unknown'))[:40]
+        pdf.multi_cell(pdf.usable_width, 8, f"Verdict: {verdict} | Impact: {impact}", 0, 'L')
+        pdf.ln(4)
+        
+        # What Works
+        what_works = cat.get('what_works', '')
+        if what_works:
+            pdf.set_font("Arial", 'B', 11)
+            pdf.set_text_color(0, 128, 0)  # Green
+            pdf.cell(pdf.usable_width, 8, "What Works:", 0, 1, 'L')
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Arial", '', 10)
+            pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_works)[:400], 0, 'L')
+            pdf.ln(3)
+        
+        # What Failed
+        what_failed = cat.get('what_failed', '')
+        if what_failed:
+            pdf.set_font("Arial", 'B', 11)
+            pdf.set_text_color(200, 0, 0)  # Red
+            pdf.cell(pdf.usable_width, 8, "What Failed:", 0, 1, 'L')
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Arial", '', 10)
+            pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_failed)[:400], 0, 'L')
+            pdf.ln(3)
+        
+        # Fix Steps
+        fix_steps = cat.get('fix_steps', [])
+        if fix_steps:
+            pdf.set_font("Arial", 'B', 11)
+            pdf.set_text_color(*pdf.primary_color)
+            pdf.cell(pdf.usable_width, 8, "Fix Steps:", 0, 1, 'L')
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Arial", '', 10)
+            for i, step in enumerate(fix_steps[:5]):  # Max 5 steps
+                step_text = clean_text_for_pdf(step)[:300]
+                pdf.multi_cell(pdf.usable_width, 6, f"{i+1}. {step_text}", 0, 'L')
+                pdf.ln(2)
+    
+    # pdf.output(dest='S') returns bytes/bytearray directly
+    # Handle encoding errors gracefully (Windows charmap issue)
+    try:
+        pdf_bytes = pdf.output(dest='S')
+    except (UnicodeEncodeError, UnicodeDecodeError) as e:
+        # If encoding fails, use BytesIO buffer which handles encoding better
+        try:
+            buffer = io.BytesIO()
+            pdf.output(buffer)
+            pdf_bytes = buffer.getvalue()
+        except Exception as e2:
+            # Last resort: log error safely (avoid Unicode in error message)
+            try:
+                error_msg = clean_text_for_pdf(f"PDF generation error: {str(e2)}")
+                st.error(error_msg)
+            except:
+                st.error("PDF generation failed due to encoding error")
+            # Return empty PDF bytes as fallback
+            pdf_bytes = b''
+    
+    # Convert bytearray to bytes if needed (Streamlit download_button expects bytes)
+    if isinstance(pdf_bytes, bytearray):
+        return bytes(pdf_bytes)
+    return pdf_bytes
+
+def validate_url(url):
+    """
+    Validate URL format. Accepts URLs with or without http://, https://, or www.
+    Must have a valid domain name and proper extension (.com, .ai, etc.)
+    """
+    if not url or not url.strip():
+        return False, "URL cannot be empty"
+    
+    url = url.strip()
+    
+    # Remove protocol if present
+    url_clean = re.sub(r'^https?://', '', url, flags=re.IGNORECASE)
+    # Remove www. if present
+    url_clean = re.sub(r'^www\.', '', url_clean, flags=re.IGNORECASE)
+    
+    # Remove trailing slash
+    url_clean = url_clean.rstrip('/')
+    
+    # Check if it's empty after cleaning
+    if not url_clean:
+        return False, "Please enter a valid website URL"
+    
+    # Split by / to get domain part
+    domain = url_clean.split('/')[0]
+    
+    # Check for valid domain pattern: must have at least one dot and valid TLD
+    # Pattern: alphanumeric, dots, hyphens allowed, must end with valid extension
+    domain_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$'
+    
+    if not re.match(domain_pattern, domain):
+        return False, "Invalid URL format. Please enter a valid website (e.g., example.com or www.example.com)"
+    
+    # Check for common valid TLDs (at least 2 characters)
+    tld_pattern = r'\.[a-zA-Z]{2,}$'
+    if not re.search(tld_pattern, domain):
+        return False, "URL must include a valid domain extension (e.g., .com, .ai, .org)"
+    
+    return True, ""
+
+def main():
+    # Reload environment variables (safety measure for Streamlit caching)
+    env_path = pathlib.Path(__file__).parent / '.env.local'
+    env_path_default = pathlib.Path(__file__).parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
+    elif env_path_default.exists():
+        load_dotenv(env_path_default, override=True)
+    
+    # Sidebar Navigation
+    with st.sidebar:
+        st.markdown("## 🎯 Choose Your Tool")
+        st.markdown("---")
+        
+        if "page_mode" not in st.session_state:
+            st.session_state.page_mode = "full_audit"
+        
+        if st.button("🔍 Full Deep Audit ($19)", key="nav_full_audit", use_container_width=True, type="primary" if st.session_state.page_mode == "full_audit" else "secondary"):
+            st.session_state.page_mode = "full_audit"
+            st.rerun()
+        
+        if st.button("💰 Free Revenue Check", key="nav_roi", use_container_width=True, type="primary" if st.session_state.page_mode == "roi" else "secondary"):
+            st.session_state.page_mode = "roi"
+            st.rerun()
+    
+    # Route to appropriate page
+    if st.session_state.page_mode == "roi":
+        render_roi_page()
+        return
+    
+    # Full Audit Page (existing functionality)
+    # Hero Section (Centered Layout)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown('<h1 class="main-title">🔥 SiteRoast.ai</h1>', unsafe_allow_html=True)
+        st.markdown('<p class="sub-header">The Brutal Conversion Audit</p>', unsafe_allow_html=True)
+        
+        # Check API key (with quote stripping)
+        api_key_check = os.getenv("GOOGLE_GENAI_API_KEY")
+        if api_key_check:
+            api_key_check = api_key_check.strip().strip('"').strip("'")
+        if not api_key_check:
+            st.warning("[!] API Key not found - check .env.local file")
+        
+        # URL input field
+        site_url = st.text_input("Enter the URL below", placeholder="https://example.com", key="site_url")
+        
+        # Validate URL
+        url_error = None
+        if site_url and site_url.strip():
+            is_valid, error_msg = validate_url(site_url)
+            if not is_valid:
+                url_error = error_msg
+                st.error(f"⚠️ {error_msg}")
+    
+    # UPLOAD BLOCK DISABLED (can be re-enabled later if needed)
+    # st.markdown("### 📸 Upload Your Screenshots (Optional)")
+    # st.caption("⚠️ If you provide a URL above, screenshots will be captured automatically")
+    # uploaded_files = st.file_uploader(
+    #     "Upload screenshots (PNG, JPG, JPEG)",
+    #     type=["png", "jpg", "jpeg"],
+    #     accept_multiple_files=True
+    # )
+    uploaded_files = None  # Disabled for now
+    
+    # Button in centered column - always visible and enabled
+    with col2:
+        # Validate URL for button enablement
+        can_roast = bool(site_url and site_url.strip() and (url_error is None))
+        
+        # Inject JavaScript to handle Enter key and button focus
+        enter_key_script = """
+        <script>
+        (function() {
+            let buttonClicked = false;
+            
+            function findRoastButton() {
+                // Find by key attribute (most reliable)
+                let roastButton = document.querySelector('button[key="roast_button"]');
+                
+                // Fallback: Find by text content
+                if (!roastButton) {
+                    const allButtons = document.querySelectorAll('button');
+                    for (let btn of allButtons) {
+                        const btnText = btn.textContent || btn.innerText || '';
+                        if (btnText.includes('Roast My Site') || btnText.includes('Roast')) {
+                            roastButton = btn;
+                            break;
+                        }
+                    }
+                }
+                
+                return roastButton;
+            }
+            
+            function triggerRoast() {
+                if (buttonClicked) return false; // Prevent multiple clicks
+                
+                const roastButton = findRoastButton();
+                if (roastButton && site_url && site_url.trim()) {
+                    buttonClicked = true;
+                    roastButton.focus();
+                    roastButton.click();
+                    setTimeout(() => { buttonClicked = false; }, 2000);
+                    return true;
+                }
+                return false;
+            }
+            
+            function setupEnterHandler() {
+                const urlInput = document.querySelector('input[aria-label*="URL"], input[aria-label*="url"], input[placeholder*="example.com"]');
+                if (!urlInput) return;
+                
+                urlInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' || e.keyCode === 13) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Wait for Streamlit to process input
+                        setTimeout(() => {
+                            const btn = findRoastButton();
+                            if (btn) {
+                                btn.focus();
+                                btn.click();
+                            }
+                        }, 200);
+                    }
+                }, true);
+            }
+            
+            // Setup on load
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', setupEnterHandler);
+            } else {
+                setupEnterHandler();
+            }
+            
+            // Retry after Streamlit renders
+            setTimeout(setupEnterHandler, 500);
+            setTimeout(setupEnterHandler, 1500);
+            
+            // Watch for new inputs
+            const observer = new MutationObserver(() => {
+                setTimeout(setupEnterHandler, 100);
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+        </script>
+        """
+        st.markdown(enter_key_script, unsafe_allow_html=True)
+        
+        # Show button always - ALWAYS ENABLED (no disabled state)
+        button_clicked = st.button("🔥 Roast My Site", type="primary", use_container_width=True, key="roast_button", disabled=False)
+        
+        if button_clicked and can_roast:
+            # Clear any previous results
+            if "roast_data" in st.session_state:
+                del st.session_state.roast_data
+            
+            # Initialize progress bar in a card container
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            progress = ProgressManager(progress_bar, status_text)
+            
+            try:
+                # PHASE 1: Screenshot Capture (Steps 0-12)
+                images = None
+                
+                if site_url and site_url.strip():
+                    # Steps 0-2: Browser initialization
+                    progress.update(0)
+                    time.sleep(0.2)
+                    progress.update(1)
+                    time.sleep(0.2)
+                    progress.update(2)
+                    
+                    try:
+                        # Fix for Windows
+                        if os.name == 'nt':
+                            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                        
+                        # Steps 3-12: Screenshot capture (takes ~15-30 seconds)
+                        progress.update(3)
+                        images, html_content, page_text = asyncio.run(capture_screenshot_from_url(site_url))
+                        
+                        # Run quick_scan in parallel (light scan for ROI dashboard)
+                        try:
+                            scan_data = asyncio.run(quick_scan(site_url))
+                            st.session_state.roi_dashboard_data = scan_data
+                        except Exception as scan_error:
+                            safe_print(f"[WARNING] Quick scan failed: {safe_error_message(str(scan_error))}")
+                            st.session_state.roi_dashboard_data = {
+                                'page_height': 3000,
+                                'price_guess': 50.0,
+                                'industry_guess': 'SaaS'
+                            }
+                        
+                        # Advance through steps 4-12 quickly
+                        for step in range(4, 13):
+                            progress.update(step)
+                            time.sleep(0.15)
+                        
+                        # Store data
+                        st.session_state.html_content = html_content
+                        st.session_state.page_text = page_text
+                        st.session_state.captured_images = images
+                        st.session_state.audit_url = site_url
+                        
+                    except Exception as e:
+                        import traceback
+                        error_msg = str(e)
+                        safe_print(f"[ERROR] Screenshot failed: {safe_error_message(traceback.format_exc())}")
+                        st.session_state.roast_data = {
+                            "error": error_msg,
+                            "overall_score": 0,
+                            "roast_summary": f"Screenshot capture failed: {error_msg[:100]}",
+                        "headline_roast": f"Screenshot capture failed: {error_msg[:100]}",
+                            "summary_bullets": ["[X] Screenshot capture failed", "[!] Try a different URL"],
+                            "categories": []
+                        }
+                        if 'progress' in locals():
+                            progress.finalize()
+                        st.error(f"[X] Screenshot capture failed: {error_msg}")
+                        images = None
+                
+                # PHASE 2: AI Processing (Steps 13-18)
+                if images:
+                    html_content = st.session_state.get("html_content", "")
+                    page_text = st.session_state.get("page_text", "")
+                    
+                    # Steps 13-14: Preparing AI request
+                    progress.update(13)
+                    time.sleep(0.2)
+                    progress.update(14)
+                    
+                    # Steps 15-18: AI generation using Assembly Line (takes ~10-20 seconds)
+                    roast_data = generate_roast(images, html_content=html_content, page_text=page_text, progress_manager=progress)
+                    
+                    st.session_state.roast_data = roast_data
+                    
+                    # Store first screenshot for PDF
+                    temp_dir = os.path.join(os.getcwd(), "temp")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    screenshot_path = os.path.join(temp_dir, f"screenshot_{int(time.time())}.png")
+                    images[0].save(screenshot_path)
+                    st.session_state.screenshot_path = screenshot_path
+                
+                # PHASE 3: Finalize (Steps 19-20)
+                progress.update(19)
+                time.sleep(0.2)
+                progress.update(20)
+                time.sleep(0.2)
+                
+                # Finale (100%)
+                progress.finalize()
+                
+                if images:
+                    st.success("✅ Analysis complete! Scroll down to see results.")
+                else:
+                    st.error("No images to analyze.")
+                
+            except Exception as e:
+                import traceback
+                error_msg = str(e)
+                safe_print(f"[ERROR] Button handler failed: {safe_error_message(traceback.format_exc())}")
+                if 'progress' in locals():
+                    progress.finalize()
+                st.error(f"[X] Error: {error_msg}")
+                # Store error in session state
+                st.session_state.roast_data = {
+                    "error": error_msg,
+                    "overall_score": 0,
+                    "roast_summary": f"An error occurred: {error_msg[:100]}",
+                    "headline_roast": f"An error occurred: {error_msg[:100]}",
+                    "summary_bullets": ["❌ Check API key", "❌ Verify internet connection", "⚠️ Try again"],
+                    "categories": []
+                }
+    
+    if "roast_data" in st.session_state:
+        roast_data = st.session_state.roast_data
+        
+        # Check for errors
+        if "error" in roast_data:
+            error_display = safe_error_message(roast_data.get('error', 'Unknown error'))
+            st.error(f"[X] {error_display}")
+            roast_summary = roast_data.get("roast_summary") or roast_data.get("headline_roast", "")
+            if roast_summary:
+                st.warning(f"**[*] The Roast:**\n\n{roast_summary}")
+            return
+        
+        # Create tabs for Main Report and ROI Dashboard
+        audit_url = st.session_state.get("audit_url", "")
+        has_roi_data = "roi_dashboard_data" in st.session_state
+        
+        if has_roi_data:
+            tab1, tab2 = st.tabs(["📊 Full Audit Report", "💰 Free ROI Check"])
+            
+            with tab1:
+                # DASHBOARD GRID LAYOUT
+                render_main_audit_dashboard(roast_data)
+            
+            with tab2:
+                render_roi_dashboard(audit_url, st.session_state.roi_dashboard_data)
+        else:
+            # DASHBOARD GRID LAYOUT
+            render_main_audit_dashboard(roast_data)
+
+def render_main_audit_dashboard(roast_data):
+    """
+    Render the main audit dashboard (existing functionality).
+    """
+    # DASHBOARD GRID LAYOUT
+    
+    # Top Row: Full-width card with Verdict/Score
+    with st.container():
+        st.markdown('<div class="css-card">', unsafe_allow_html=True)
+        col_top1, col_top2, col_top3 = st.columns([1, 1, 1])
+        with col_top1:
+            score = roast_data.get("overall_score", 50)
+            st.metric("Overall Site Score", f"{score}/100")
+        with col_top2:
+            # Visual Traffic Light based on score
+            if score < 50:
+                st.error("Verdict: CRITICAL CONDITION")
+            elif score < 80:
+                st.warning("Verdict: NEEDS OPTIMIZATION")
+            else:
+                st.success("Verdict: EXCELLENT")
+        with col_top3:
+            # PDF Download Button
+            try:
+                screenshot_path = None
+                temp_dir = os.path.join(os.getcwd(), "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                if "uploaded_files" in st.session_state and st.session_state.uploaded_files:
+                    first_file = st.session_state.uploaded_files[0]
+                    screenshot_path = os.path.join(temp_dir, f"screenshot_{int(time.time())}.png")
+                    Image.open(first_file).save(screenshot_path)
+                elif "captured_images" in st.session_state and st.session_state.captured_images:
+                    first_img = st.session_state.captured_images[0]
+                    screenshot_path = os.path.join(temp_dir, f"screenshot_{int(time.time())}.png")
+                    first_img.save(screenshot_path)
+                
+                radar_chart_path = st.session_state.get("radar_chart_path", None)
+                site_url = st.session_state.get("site_url", None)
+                stitched_heatmap_path = st.session_state.get("stitched_heatmap_path", None)
+                
+                pdf_bytes = generate_pdf_report(roast_data, screenshot_path, site_url, radar_chart_path, stitched_heatmap_path)
+                st.download_button(
+                    label="📥 Download PDF Report",
+                    data=pdf_bytes,
+                    file_name=f"siteroast_audit_{int(time.time())}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                
+                for temp_path in [screenshot_path, radar_chart_path]:
+                    if temp_path and os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except:
+                            pass
+            except Exception as e:
+                error_msg = safe_error_message(e)
+                st.error(f"Error generating PDF: {error_msg}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Middle Row: 50/50 Split - Radar Chart & Executive Summary
+    col_mid_left, col_mid_right = st.columns(2)
+
+    with col_mid_left:
+        st.markdown('<div class="css-card">', unsafe_allow_html=True)
+        st.subheader("📊 Performance Radar")
+        
+        # Build radar data - ALWAYS use these 6 standardized metrics
+        radar_scores = roast_data.get("radar_scores", {})
+        
+        # If radar_scores not provided, calculate from sections or categories
+        if not radar_scores:
+            # Try to get from sections first (new structure)
+            sections = roast_data.get("sections", [])
+            if sections:
+                radar_scores = calculate_radar_from_sections(sections)
+            else:
+                # Fallback to categories (legacy)
+                categories = roast_data.get("categories", [])
+                radar_scores = calculate_radar_from_categories(categories)
+        
+        # Ensure all 6 metrics are present (default to 50 if missing)
+        required_metrics = ["UX", "Conversion", "Copy", "Visuals", "Trust", "Speed"]
+        radar = {}
+        for metric in required_metrics:
+            radar[metric] = radar_scores.get(metric, 50)  # Default to 50 if missing
+        
+        if radar and len(radar) == 6:
+                # Ensure correct order: UX, Conversion, Copy, Visuals, Trust, Speed
+                ordered_radar = {
+                    "UX": radar.get("UX", 50),
+                    "Conversion": radar.get("Conversion", 50),
+                    "Copy": radar.get("Copy", 50),
+                    "Visuals": radar.get("Visuals", 50),
+                    "Trust": radar.get("Trust", 50),
+                    "Speed": radar.get("Speed", 50)
+                }
+                df = pd.DataFrame(dict(
+                    r=list(ordered_radar.values()),
+                    theta=list(ordered_radar.keys())
+                ))
+                fig = px.line_polar(df, r='r', theta='theta', line_close=True)
+                fig.update_traces(
+                    fill='toself',
+                    line_color='#667eea',  # Site primary color (gradient blue-purple)
+                    fillcolor='rgba(102, 126, 234, 0.3)'  # Matching theme color
+                )
+                fig.update_layout(
+                    polar=dict(
+                        radialaxis=dict(
+                            visible=True,
+                            range=[0, 100],
+                            tickmode='linear',
+                            tick0=0,
+                            dtick=20,
+                            tickfont=dict(size=10),
+                            gridcolor='rgba(150, 150, 150, 0.5)',  # More visible grid lines
+                            showline=True,
+                            linecolor='rgba(150, 150, 150, 0.5)',  # More visible outer line
+                            gridwidth=1,
+                            linewidth=1
+                        ),
+                        angularaxis=dict(
+                            showline=True,
+                            linecolor='rgba(150, 150, 150, 0.3)',  # Show angular grid lines
+                            gridcolor='rgba(150, 150, 150, 0.3)',
+                            gridwidth=1,
+                            linewidth=1
+                        ),
+                        bgcolor='rgba(0,0,0,0)'  # Transparent polar background
+                    ),
+                    showlegend=False,
+                    paper_bgcolor='rgba(0,0,0,0)',  # Transparent background
+                    plot_bgcolor='rgba(0,0,0,0)',   # Transparent plot area
+                    font=dict(family="Arial", size=12)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Save radar chart as image for PDF (with transparent background)
+                try:
+                    temp_dir = os.path.join(os.getcwd(), "temp")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    radar_chart_path = os.path.join(temp_dir, f"radar_{int(time.time())}.png")
+                    # Save with transparent background
+                    fig.write_image(radar_chart_path, width=400, height=400, scale=2, format='png')
+                    st.session_state.radar_chart_path = radar_chart_path
+                except Exception as e:
+                    st.caption(f"Note: Chart export error: {str(e)[:30]}")
+        else:
+            st.info("No radar data")
+        st.markdown('<p style="color: #667eea; font-weight: bold; font-size: 1.1rem; margin-top: 1rem;">Leaders score 80+</p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col_mid_right:
+        st.markdown('<div class="css-card">', unsafe_allow_html=True)
+        st.subheader("🔥 Executive Summary")
+        
+        # Show roast_summary (check multiple possible fields)
+        roast_summary = (
+                roast_data.get("roastSummary") or 
+                roast_data.get("roast_summary") or 
+                roast_data.get("overview", {}).get("executiveSummary") or 
+                roast_data.get("headline_roast") or 
+                "Analysis completed"
+            )
+        if roast_summary and roast_summary.strip():
+            st.markdown(roast_summary)
+        else:
+            st.warning("Executive summary is being generated...")
+        
+        # Show roast analysis if available
+        roast_analysis = roast_data.get("overview", {}).get("roastAnalysis")
+        if roast_analysis and roast_analysis.strip():
+            st.markdown(f'**Analysis:**\n\n{roast_analysis}')
+        
+        # Show summary bullets
+        summary_bullets = roast_data.get("summary_bullets", [])
+        if summary_bullets:
+            st.markdown("**Key Findings:**")
+            for bullet in summary_bullets[:5]:
+                if "✅" in bullet:
+                    st.success(bullet)
+                elif "❌" in bullet:
+                    st.error(bullet)
+                else:
+                    st.info(bullet)
+        
+        # Show heatmap of ONLY the first screenshot (Hero section)
+        st.markdown("**Visual Saliency - First Impression**")
+        if "captured_images" in st.session_state and st.session_state.captured_images:
+            hero_image = st.session_state.captured_images[0]
+            hero_heatmap = generate_heatmap(hero_image)
+            st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+        elif "uploaded_files" in st.session_state and st.session_state.uploaded_files:
+            first_file = st.session_state.uploaded_files[0]
+            hero_image = Image.open(first_file)
+            hero_heatmap = generate_heatmap(hero_image)
+            st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+        else:
+            st.info("No screenshot available")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Quick Wins Section
+    quick_wins = roast_data.get("quick_wins", [])
+    if quick_wins:
+        st.markdown("---")
+        st.subheader("🚀 Quick Wins (Ranked by Impact)")
+        for i, win in enumerate(quick_wins[:3], 1):
+            with st.expander(f"**{i}. {win.get('title', 'Quick Win')}** - {win.get('effort', 'N/A')} | {win.get('lift', 'N/A')}"):
+                st.markdown(f"**Problem:** {win.get('problem', 'N/A')}")
+                st.markdown(f"**Fix:** {win.get('fix', 'N/A')}")
+                if win.get('example'):
+                    st.code(win.get('example'), language='html')
+    
+    # Audit Items Section
+    audit_items = roast_data.get("audit_items", [])
+    if audit_items:
+        st.markdown("---")
+        st.subheader("📋 Element-by-Element Audit")
+        for item in audit_items[:6]:
+            status = item.get("status", "Unknown")
+            status_color = {
+                "Excellent": "🟢",
+                "Good": "🟡",
+                "Satisfactory": "🟠",
+                "Needs Improvement": "🔴",
+                "Failed": "❌"
+            }.get(status, "⚪")
+            
+            with st.expander(f"{status_color} **{item.get('element', 'Element')}** - {status}"):
+                st.markdown(f"**Rationale:** {item.get('rationale', 'N/A')}")
+                
+                col_work1, col_work2 = st.columns(2)
+                with col_work1:
+                    st.markdown("**✅ What's Working:**")
+                    for working_item in item.get("working", []):
+                        st.success(f"• {working_item}")
+                
+                with col_work2:
+                    st.markdown("**❌ What's Not Working:**")
+                    for not_working_item in item.get("not_working", []):
+                        st.error(f"• {not_working_item}")
+                
+                if item.get("fix"):
+                    st.markdown("**🔧 Fix:**")
+                    st.code(item.get("fix"), language='html')
+                    if item.get("expected_impact"):
+                        st.info(f"**Expected Impact:** {item.get('expected_impact')}")
+    
+    # Bottom Row: Deep Dive Tabs
+    st.markdown("---")
+    st.subheader("🔍 Deep Dive Findings")
+    
+    # Use detailedAudit instead of categories (detailedAudit is the new structure)
+    detailed_audit = roast_data.get("detailedAudit", {})
+    
+    # Convert detailedAudit to categories format for display
+    categories = []
+    if detailed_audit:
+            category_names = {
+                "ux": "UX & Layout",
+                "conversion": "Conversion & Funnel",
+                "copy": "Copy & Messaging",
+                "visuals": "Visuals & Brand",
+                "trust": "Trust & Credibility",
+                "speed": "Speed & Technical Health"
+            }
+            
+            for cat_key, items in detailed_audit.items():
+                if items:  # Only add categories that have items
+                    cat_name = category_names.get(cat_key.lower(), cat_key.capitalize())
+                # Calculate score for this category
+                status_points = {"Excellent": 95, "Good": 80, "Satisfactory": 60, "Needs Improvement": 35, "Failed": 5}
+                scores = [status_points.get(item.get("status", "Satisfactory"), 60) for item in items]
+                avg_score = round(sum(scores) / len(scores)) if scores else 50
+                
+                # Build what_works and what_failed from items
+                what_works_items = [item for item in items if item.get("status") in ["Excellent", "Good"]]
+                what_failed_items = [item for item in items if item.get("status") in ["Failed", "Needs Improvement"]]
+                
+                what_works = "; ".join([item.get("elementName", "") for item in what_works_items[:3]]) if what_works_items else ""
+                what_failed = "; ".join([item.get("elementName", "") for item in what_failed_items[:3]]) if what_failed_items else ""
+                
+                # Build fix_steps from items
+                fix_steps = []
+                for item in what_failed_items[:3]:
+                    fix = item.get("fix", {})
+                    if isinstance(fix, dict):
+                        quick_fix = fix.get("quickFix", "")
+                        if quick_fix:
+                            fix_steps.append(f"{item.get('elementName', 'Item')}: {quick_fix}")
+                    elif fix:
+                        fix_steps.append(f"{item.get('elementName', 'Item')}: {str(fix)}")
+                
+                categories.append({
+                    "name": cat_name,
+                    "score": avg_score,
+                    "verdict": "Needs Improvement" if avg_score < 60 else "Good" if avg_score < 80 else "Excellent",
+                    "impact": "High" if what_failed_items else "Medium",
+                    "what_works": what_works,
+                    "what_failed": what_failed,
+                    "fix_steps": fix_steps
+                })
+    
+    # Fallback to legacy categories if detailedAudit is empty
+    if not categories:
+        categories = roast_data.get("categories", [])
+    
+    if categories:
+        # Map category names to emoji icons
+        emoji_map = {
+            "UX": "🎯",
+            "Conversion": "💰",
+            "Copy": "✍️",
+            "Visuals": "🎨",
+            "Legal": "⚖️",
+            "Speed": "⚡"
+        }
+        cat_names = []
+        for cat in categories:
+            cat_name = cat.get('name', '')
+            # Find matching emoji
+            emoji = "📋"  # Default
+            for key, emoji_icon in emoji_map.items():
+                if key in cat_name:
+                    emoji = emoji_icon
+                    break
+            cat_names.append(f"{emoji} {cat_name}")
+        
+        tabs = st.tabs(cat_names)
+        
+        for i, tab in enumerate(tabs):
+            cat = categories[i]
+            with tab:
+                # Impact Badge
+                impact = cat.get("impact", "Unknown")
+                if impact == "High":
+                    st.error(f"Impact: {impact} - Priority Fix!")
+                else:
+                    st.warning(f"Impact: {impact}")
+                
+                score = cat.get("score", 0)
+                verdict = cat.get("verdict", "Unknown")
+                st.write(f"**Score:** {score}/100 | **Verdict:** {verdict}")
+                
+                # Display what_works, what_failed, fix_steps
+                what_works = cat.get("what_works", "")
+                what_failed = cat.get("what_failed", "")
+                fix_steps = cat.get("fix_steps", [])
+                verdict = cat.get("verdict", "Unknown")
+                
+                if what_works:
+                    st.success(f"**✅ What Works:**\n\n{what_works}")
+                
+                if what_failed:
+                    st.error(f"**[X] What Failed:**\n\n{what_failed}")
+                
+                if fix_steps:
+                    st.markdown("**🔧 Fix Steps:**")
+                    for step in fix_steps:
+                        st.info(step)
+                
+                if not what_works and not what_failed and not fix_steps:
+                    st.info("No specific findings for this category.")
+    else:
+        st.info("No category data available. The AI may not have returned structured findings.")
+
+if __name__ == "__main__":
+    main()
