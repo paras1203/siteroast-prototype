@@ -2527,7 +2527,7 @@ def generate_heatmap(image_pil):
 class PDFReport(FPDF):
     """
     Custom PDF Report with branded header/footer and proper text wrapping.
-    Uses DejaVuSans font for Unicode/emoji support, falls back to Arial if not available.
+    Uses DejaVuSans font for Unicode/emoji support, falls back to Helvetica if not available.
     """
     def __init__(self):
         super().__init__()
@@ -2546,10 +2546,10 @@ class PDFReport(FPDF):
         # Flag to control header visibility on cover page
         self.is_cover_page = False
         
-        # Try to use DejaVuSans (Unicode font), fallback to Arial
+        # Try to use DejaVuSans (Unicode font), fallback to Helvetica
         # Note: DejaVuSans needs to be added via add_font() if available
-        # For now, we'll use Arial but clean text before adding to PDF
-        self.font_name = 'Arial'  # Default font
+        # For now, we'll use Helvetica but clean text before adding to PDF
+        self.font_name = 'Helvetica'  # Default font
         try:
             # Try to add DejaVuSans if available (requires font files)
             # For now, we'll clean text instead
@@ -2568,8 +2568,8 @@ class PDFReport(FPDF):
         self.set_draw_color(*self.primary_color)
         self.rect(10, 10, 190, 277)  # A4 border
         
-        # Brand text (use Arial, text is already cleaned)
-        self.set_font('Arial', 'B', 10)
+        # Brand text (use Helvetica, text is already cleaned)
+        self.set_font('Helvetica', 'B', 10)
         self.set_text_color(150, 150, 150)
         self.set_xy(15, 15)
         self.cell(0, 10, clean_text('SiteRoast Conversion Audit Report'), 0, 0, 'L')
@@ -2579,7 +2579,7 @@ class PDFReport(FPDF):
     def footer(self):
         """Branded footer with page number"""
         self.set_y(-20)
-        self.set_font('Arial', 'I', 9)  # Footer uses Arial (text is cleaned)
+        self.set_font('Helvetica', 'I', 9)  # Footer uses Helvetica (text is cleaned)
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, clean_text(f'Page {self.page_no()}'), 0, 0, 'C')
     
@@ -2614,7 +2614,7 @@ class PDFReport(FPDF):
         
         # Header
         self.set_font("Helvetica", "B", 16)
-        self.set_text_color(31, 33, 33)
+        self.set_text_color(0, 0, 0)  # Force black text
         self.cell(0, 10, clean_text("Executive Summary"), ln=True)
         self.ln(5)
         
@@ -2633,9 +2633,11 @@ class PDFReport(FPDF):
         paragraphs = cleaned_text.split('\n')
         
         self.set_font("Helvetica", "", 11)
+        self.set_text_color(0, 0, 0)  # Force black text
         for para in paragraphs:
             para = para.strip()
             if para:
+                self.set_text_color(0, 0, 0)  # Force black text before each cell
                 self.multi_cell(0, 6, clean_text(para))
                 self.ln(3)  # Space between paragraphs
         
@@ -2678,7 +2680,7 @@ class PDFReport(FPDF):
         
         # Draw matrix title
         self.set_font("Helvetica", "B", 12)
-        self.set_text_color(31, 33, 33)
+        self.set_text_color(0, 0, 0)  # Force black text
         self.cell(0, 8, clean_text("Priority Matrix: Where to Start"), ln=True)
         self.ln(3)
         
@@ -2690,7 +2692,7 @@ class PDFReport(FPDF):
         
         # Draw header row (Status labels)
         self.set_font("Helvetica", "B", 9)
-        self.set_text_color(31, 33, 33)
+        self.set_text_color(0, 0, 0)  # Force black text
         x_pos = start_x + cell_width  # Skip first column (for impact labels)
         
         # Shortened status labels for fit (must match status_levels order)
@@ -3014,7 +3016,7 @@ class PDFReport(FPDF):
         
         # Header: ElementName (Bold, 12pt) and Status/Impact Badge on same line
         self.set_font("Helvetica", "B", 12)
-        self.set_text_color(31, 33, 33)
+        self.set_text_color(0, 0, 0)  # Force black text
         
         element_name = clean_text(element_name)
         status = clean_text(str(item.get('status', 'Unknown')))
@@ -3037,14 +3039,9 @@ class PDFReport(FPDF):
         else:
             self.cell(name_width, 8, element_name, ln=0)
         
-        # Status/Impact Badge (colored) - using humanized impact
-        badge_text = clean_text(f" [{status} | {readable_impact}]")
-        if status in ["Failed", "Needs Improvement"]:
-            self.set_text_color(*self.fail_color)
-        elif status == "Excellent":
-            self.set_text_color(*self.success_color)
-        else:
-            self.set_text_color(*self.warn_color)
+            # Status/Impact Badge (black text - was colored, may be invisible)
+            badge_text = clean_text(f" [{status} | {readable_impact}]")
+            self.set_text_color(0, 0, 0)  # Force black text
         
         self.set_font("Helvetica", "", 10)
         badge_width = self.get_string_width(badge_text)
@@ -3057,7 +3054,7 @@ class PDFReport(FPDF):
             self.ln(8)
             self.set_x(15)
             self.cell(badge_width, 8, badge_text, ln=True)
-        self.set_text_color(31, 33, 33)
+        self.set_text_color(0, 0, 0)  # Force black text
         self.ln(2)
         
         # Rationale: Italics, Grey, 10pt
@@ -3065,39 +3062,41 @@ class PDFReport(FPDF):
         if rationale:
             self.set_x(15)  # Ensure left margin
             self.set_font("Helvetica", "I", 10)
-            self.set_text_color(128, 128, 128)
+            self.set_text_color(0, 0, 0)  # Force black text (was grey, may be invisible)
             self.multi_cell(self.usable_width, 5, rationale, 0, 'L')
-            self.set_text_color(31, 33, 33)
+            self.set_text_color(0, 0, 0)  # Force black text
             self.ln(3)
         
         # The Findings: Split Layout
-        # What's Working (Green Text)
+        # What's Working (Black Text - was green, may be invisible)
         working = item.get('working', item.get('workingWell', []))
         if working:
             self.set_x(15)  # Ensure left margin
             self.set_font("Helvetica", "B", 10)
-            self.set_text_color(*self.success_color)
+            self.set_text_color(0, 0, 0)  # Force black text
             self.cell(self.usable_width, 6, clean_text("What's Working:"), ln=True)
-            self.set_text_color(31, 33, 33)
             self.set_font("Helvetica", "", 9)
+            self.set_text_color(0, 0, 0)  # Force black text
             for w in working[:5]:  # Limit to 5 items
                 self.set_x(15)  # Ensure left margin for each bullet
+                self.set_text_color(0, 0, 0)  # Force black text before each cell
                 w_text = clean_text(str(w))
                 bullet_text = clean_text(f"  - {w_text}")
                 self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
             self.ln(2)
         
-        # What's Broken (Red Text)
+        # What's Broken (Black Text - was red, may be invisible)
         not_working = item.get('not_working', item.get('notWorking', []))
         if not_working:
             self.set_x(15)  # Ensure left margin
             self.set_font("Helvetica", "B", 10)
-            self.set_text_color(*self.fail_color)
+            self.set_text_color(0, 0, 0)  # Force black text
             self.cell(self.usable_width, 6, clean_text("What's Broken:"), ln=True)
-            self.set_text_color(31, 33, 33)
             self.set_font("Helvetica", "", 9)
+            self.set_text_color(0, 0, 0)  # Force black text
             for nw in not_working[:5]:  # Limit to 5 items
                 self.set_x(15)  # Ensure left margin for each bullet
+                self.set_text_color(0, 0, 0)  # Force black text before each cell
                 nw_text = clean_text(str(nw))
                 bullet_text = clean_text(f"  - {nw_text}")
                 self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
@@ -3112,15 +3111,18 @@ class PDFReport(FPDF):
         
         if len(fix_text) > 5:  # Only draw if real text exists
             self.ln(2)
-            self.set_fill_color(249, 249, 249)
-            self.set_font("Arial", "B", 10)
-            self.set_text_color(31, 33, 33)
+            # DISABLED: Background box (layering check - may be drawing on top of text)
+            # self.set_fill_color(249, 249, 249)
+            # self.rect(self.get_x(), self.get_y(), 190, total_h, 'F')
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(0, 0, 0)  # Force black text
             self.cell(0, 8, clean_text("Action Plan:"), ln=True)
             
-            self.set_font("Arial", "", 10)
+            self.set_font("Helvetica", "", 10)
+            self.set_text_color(0, 0, 0)  # Force black text
             cleaned_fix = clean_text(str(fix_text))
             # Use border=1 to draw the box, but ensure text is inside
-            self.multi_cell(0, 6, cleaned_fix, border=1, fill=True)
+            self.multi_cell(0, 6, cleaned_fix, border=1, fill=False)
             self.ln(2)
         
         # Spacing: 5mm padding between cards
@@ -3280,17 +3282,43 @@ def calculate_radar_from_categories(categories):
 
 def clean_text(text):
     """
-    The Emoji Killer: Removes emojis and unsupported characters for FPDF.
-    Uses latin-1 encoding which is more permissive than ASCII but still safe for FPDF.
+    Brutal ASCII Text Sanitizer: Removes ALL Unicode/emojis for FPDF.
+    Forces conversion to ASCII to eliminate any possibility of font rendering issues.
     This prevents Unicode errors that cause blank PDFs on Streamlit Cloud.
     """
     if not text:
         return ""
     
+    # Force conversion to string and strip non-ASCII characters
     text = str(text)
     
-    # Replace common emojis with ASCII equivalents first
+    # Replace smart quotes and common issue chars manually first
     replacements = {
+        '\u2018': "'",  # Left single quote
+        '\u2019': "'",  # Right single quote
+        '\u201c': '"',  # Left double quote
+        '\u201d': '"',  # Right double quote
+        '\u2013': '-',  # En dash
+        '\u2014': '-',  # Em dash
+        '•': '-',
+        '–': '-',
+        '—': '-',
+        ''': "'",
+        ''': "'",
+        '"': '"',
+        '"': '"',
+        '…': '...',
+        '€': 'EUR',
+        '£': 'GBP',
+        '©': '(c)',
+        '®': '(R)',
+        '™': '(TM)',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    
+    # Replace common emojis with ASCII equivalents
+    emoji_replacements = {
         "✅": "[+]",
         "❌": "[X]",
         "⚠️": "[!]",
@@ -3313,40 +3341,16 @@ def clean_text(text):
         "🔴": "[FAIL]",
         "⚪": "[N/A]",
     }
-    for emoji, replacement in replacements.items():
+    for emoji, replacement in emoji_replacements.items():
         text = text.replace(emoji, replacement)
     
-    # Replace problematic special characters
-    problematic_chars = {
-        '•': '-',
-        '–': '-',
-        '—': '-',
-        ''': "'",
-        ''': "'",
-        '"': '"',
-        '"': '"',
-        '…': '...',
-        '€': 'EUR',
-        '£': 'GBP',
-        '©': '(c)',
-        '®': '(R)',
-        '™': '(TM)',
-    }
-    for char, replacement in problematic_chars.items():
-        text = text.replace(char, replacement)
-    
-    # CRITICAL: Use latin-1 encoding (single-byte, more permissive than ASCII)
-    # This allows more characters while still being safe for FPDF
+    # CRITICAL: Encode to ASCII, ignoring errors (strips emojis/foreign chars)
+    # This is the most aggressive approach - eliminates ALL Unicode
     try:
-        # Encode to latin-1, ignore errors, decode back. This strips unsupported Unicode.
-        text = text.encode('latin-1', 'ignore').decode('latin-1')
+        text = text.encode('ascii', 'ignore').decode('ascii')
     except Exception:
-        # Fallback: if latin-1 fails, use ASCII
-        try:
-            text = text.encode('ascii', 'ignore').decode('ascii')
-        except Exception:
-            # Last resort: return empty string
-            text = ""
+        # Last resort: return empty string
+        text = ""
     
     return text
 
@@ -3553,10 +3557,9 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
             
             if verified_screenshot_path and os.path.exists(verified_screenshot_path):
                 pdf.add_page()
-                pdf.set_font("Arial", 'B', 16)
-                pdf.set_text_color(*pdf.primary_color)
+                pdf.set_font("Helvetica", 'B', 16)
+                pdf.set_text_color(0, 0, 0)  # Force black text
                 pdf.cell(pdf.usable_width, 10, clean_text("Landing Page Screenshot"), 0, 1, 'L')
-                pdf.set_text_color(0, 0, 0)
                 pdf.ln(5)
                 
                 try:
@@ -3598,7 +3601,8 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                     pdf.image(verified_screenshot_path, x=x_offset, y=current_y, w=display_width)
                     safe_print(f"[PDF] Screenshot added successfully. Page count: {pdf.page_no()}")
                 except Exception as e:
-                    pdf.set_font("Arial", '', 10)
+                    pdf.set_font("Helvetica", '', 10)
+                    pdf.set_text_color(0, 0, 0)  # Force black text
                     error_msg = str(e)[:150]
                     pdf.multi_cell(pdf.usable_width, 8, clean_text(f"Note: Could not load screenshot: {error_msg}"), 0, 'L')
                     safe_print(f"[PDF] Screenshot load failed: {safe_error_message(str(e))}")
@@ -3614,10 +3618,9 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
             for page_start in range(0, len(audit_items), items_per_page):
                 pdf.add_page()
                 if page_start == 0:
-                    pdf.set_font("Arial", 'B', 18)
-                    pdf.set_text_color(*pdf.primary_color)
+                    pdf.set_font("Helvetica", 'B', 18)
+                    pdf.set_text_color(0, 0, 0)  # Force black text
                     pdf.cell(pdf.usable_width, 12, clean_text("Element-by-Element Audit"), 0, 1, 'L')
-                    pdf.set_text_color(0, 0, 0)
                     pdf.ln(3)
                 
                 page_items = audit_items[page_start:page_start + items_per_page]
@@ -3633,9 +3636,11 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                         safe_print(f"[PDF] Audit card failed: {safe_error_message(str(e))}")
                         # Add fallback content for this item
                         element_name = item.get('element', item.get('elementName', 'Element'))
-                        pdf.set_font("Arial", 'B', 12)
+                        pdf.set_font("Helvetica", 'B', 12)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.cell(pdf.usable_width, 8, clean_text(str(element_name)), ln=True)
-                        pdf.set_font("Arial", '', 10)
+                        pdf.set_font("Helvetica", '', 10)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.cell(pdf.usable_width, 6, clean_text(f"Status: {item.get('status', 'Unknown')}"), ln=True)
                         pdf.ln(3)
             safe_print(f"[PDF] Audit items added. Page count: {pdf.page_no()}")
@@ -3648,13 +3653,15 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                 try:
                     pdf.add_page()
                     # Title
-                    pdf.set_font("Arial", 'B', 16)
+                    pdf.set_font("Helvetica", 'B', 16)
+                    pdf.set_text_color(0, 0, 0)  # Force black text
                     cat_name = clean_text(cat.get('name', 'Unknown'))[:80]
                     cat_score = cat.get('score', 0)
                     pdf.multi_cell(pdf.usable_width, 10, clean_text(f"{cat_name} (Score: {cat_score}/100)"), 0, 'L')
                     
                     # Verdict & Impact
-                    pdf.set_font("Arial", '', 11)
+                    pdf.set_font("Helvetica", '', 11)
+                    pdf.set_text_color(0, 0, 0)  # Force black text
                     verdict = clean_text(cat.get('verdict', 'Unknown'))[:40]
                     impact = clean_text(cat.get('impact', 'Unknown'))[:40]
                     pdf.multi_cell(pdf.usable_width, 8, clean_text(f"Verdict: {verdict} | Impact: {impact}"), 0, 'L')
@@ -3663,33 +3670,33 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                     # What Works
                     what_works = cat.get('what_works', '')
                     if what_works:
-                        pdf.set_font("Arial", 'B', 11)
-                        pdf.set_text_color(0, 128, 0)  # Green
+                        pdf.set_font("Helvetica", 'B', 11)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.cell(pdf.usable_width, 8, clean_text("What Works:"), 0, 1, 'L')
-                        pdf.set_text_color(0, 0, 0)
-                        pdf.set_font("Arial", '', 10)
+                        pdf.set_font("Helvetica", '', 10)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.multi_cell(pdf.usable_width, 6, clean_text(str(what_works))[:400], 0, 'L')
                         pdf.ln(3)
                     
                     # What Failed
                     what_failed = cat.get('what_failed', '')
                     if what_failed:
-                        pdf.set_font("Arial", 'B', 11)
-                        pdf.set_text_color(200, 0, 0)  # Red
+                        pdf.set_font("Helvetica", 'B', 11)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.cell(pdf.usable_width, 8, clean_text("What Failed:"), 0, 1, 'L')
-                        pdf.set_text_color(0, 0, 0)
-                        pdf.set_font("Arial", '', 10)
+                        pdf.set_font("Helvetica", '', 10)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.multi_cell(pdf.usable_width, 6, clean_text(str(what_failed))[:400], 0, 'L')
                         pdf.ln(3)
                     
                     # Fix Steps
                     fix_steps = cat.get('fix_steps', [])
                     if fix_steps:
-                        pdf.set_font("Arial", 'B', 11)
-                        pdf.set_text_color(*pdf.primary_color)
+                        pdf.set_font("Helvetica", 'B', 11)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         pdf.cell(pdf.usable_width, 8, clean_text("Fix Steps:"), 0, 1, 'L')
-                        pdf.set_text_color(0, 0, 0)
-                        pdf.set_font("Arial", '', 10)
+                        pdf.set_font("Helvetica", '', 10)
+                        pdf.set_text_color(0, 0, 0)  # Force black text
                         for i, step in enumerate(fix_steps[:5]):  # Max 5 steps
                             step_text = clean_text(str(step))[:300]
                             pdf.multi_cell(pdf.usable_width, 6, clean_text(f"{i+1}. {step_text}"), 0, 'L')
@@ -3698,7 +3705,8 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                     safe_print(f"[PDF] Category page failed: {safe_error_message(str(e))}")
                     # Add minimal fallback
                     pdf.add_page()
-                    pdf.set_font("Arial", 'B', 16)
+                    pdf.set_font("Helvetica", 'B', 16)
+                    pdf.set_text_color(0, 0, 0)  # Force black text
                     cat_name = clean_text(cat.get('name', 'Category'))[:80]
                     pdf.cell(pdf.usable_width, 10, clean_text(f"{cat_name}"), 0, 1, 'L')
             safe_print(f"[PDF] Categories added. Page count: {pdf.page_no()}")
@@ -4255,7 +4263,7 @@ def render_main_audit_dashboard(roast_data):
                     showlegend=False,
                     paper_bgcolor='rgba(0,0,0,0)',  # Transparent background
                     plot_bgcolor='rgba(0,0,0,0)',   # Transparent plot area
-                    font=dict(family="Arial", size=12)
+                    font=dict(family="Helvetica", size=12)
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
