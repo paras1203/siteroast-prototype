@@ -2546,16 +2546,8 @@ class PDFReport(FPDF):
         # Flag to control header visibility on cover page
         self.is_cover_page = False
         
-        # Try to use DejaVuSans (Unicode font), fallback to Helvetica
-        # Note: DejaVuSans needs to be added via add_font() if available
-        # For now, we'll use Helvetica but clean text before adding to PDF
+        # Use Helvetica only - core PostScript font guaranteed on Linux
         self.font_name = 'Helvetica'  # Default font
-        try:
-            # Try to add DejaVuSans if available (requires font files)
-            # For now, we'll clean text instead
-            pass
-        except:
-            pass
     
     def header(self):
         """Branded header on every page"""
@@ -2563,10 +2555,10 @@ class PDFReport(FPDF):
         if self.is_cover_page:
             return
         
-        # Draw border
-        self.set_line_width(0.5)
-        self.set_draw_color(*self.primary_color)
-        self.rect(10, 10, 190, 277)  # A4 border
+        # DISABLED: Border rectangle (may cause layering issues)
+        # self.set_line_width(0.5)
+        # self.set_draw_color(*self.primary_color)
+        # self.rect(10, 10, 190, 277)  # A4 border
         
         # Brand text (use Helvetica, text is already cleaned)
         self.set_font('Helvetica', 'B', 10)
@@ -2588,18 +2580,21 @@ class PDFReport(FPDF):
         self.add_page()
         self.is_cover_page = True  # Turn off header
         
+        # Force black text at start
+        self.set_text_color(0, 0, 0)  # Force Black
+        
         # Vertical Center Calculation (Page Height ~297mm)
         self.set_y(110)
         
         # Title
         self.set_font("Helvetica", "B", 28)
-        self.set_text_color(31, 33, 33)
+        self.set_text_color(0, 0, 0)  # Force Black
         self.cell(0, 15, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
         self.ln(10)
         
         # Client Info
         self.set_font("Helvetica", "", 14)
-        self.set_text_color(98, 108, 113)
+        self.set_text_color(0, 0, 0)  # Force Black
         scanned_url = clean_text(str(metadata.get('scannedUrl', 'N/A')))
         scanned_at = clean_text(str(metadata.get('scannedAt', 'N/A')))
         self.cell(0, 8, clean_text(f"Client: {scanned_url}"), ln=True, align="C")
@@ -2612,17 +2607,21 @@ class PDFReport(FPDF):
         """Executive summary section with proper text wrapping - Page 2"""
         self.add_page()  # Force Page 2
         
+        # Force black text at start
+        self.set_text_color(0, 0, 0)  # Force Black
+        
         # Header
         self.set_font("Helvetica", "B", 16)
         self.set_text_color(0, 0, 0)  # Force black text
         self.cell(0, 10, clean_text("Executive Summary"), ln=True)
         self.ln(5)
         
-        # Score Badge
-        self.set_fill_color(240, 240, 240)
+        # Score Badge (DISABLED: Background fill - may cause layering issues)
+        # self.set_fill_color(240, 240, 240)
         self.set_font("Helvetica", "B", 14)
+        self.set_text_color(0, 0, 0)  # Force Black
         score_text = clean_text(f"  Site Score: {overall_score}/100  ")
-        self.cell(0, 12, score_text, ln=True, fill=True)
+        self.cell(0, 12, score_text, ln=True, fill=False)
         self.ln(10)
         
         # Content (Handle Blank Data) - Split text by \n to create paragraphs
@@ -2699,8 +2698,9 @@ class PDFReport(FPDF):
         status_labels_display = ['Failed', 'Needs Imp.', 'Satisf.', 'Good', 'Excellent']
         for i, status_label in enumerate(status_labels_display):
             self.set_xy(x_pos + (i * cell_width), start_y)
-            self.set_fill_color(240, 240, 240)
-            self.cell(cell_width, cell_height, clean_text(status_label), border=1, fill=True, align='C')
+            # DISABLED: Background fill (may cause layering issues)
+            # self.set_fill_color(240, 240, 240)
+            self.cell(cell_width, cell_height, clean_text(status_label), border=1, fill=False, align='C')
         
         # Draw matrix rows (Impact levels)
         impact_labels = ['High', 'Medium', 'Low']
@@ -2711,9 +2711,11 @@ class PDFReport(FPDF):
             
             # Impact label (left column)
             self.set_xy(start_x, row_y)
-            self.set_fill_color(245, 245, 245)
+            # DISABLED: Background fill (may cause layering issues)
+            # self.set_fill_color(245, 245, 245)
             self.set_font("Helvetica", "B", 9)
-            self.cell(cell_width, cell_height, clean_text(impact_labels[impact_row]), border=1, fill=True, align='C')
+            self.set_text_color(0, 0, 0)  # Force Black
+            self.cell(cell_width, cell_height, clean_text(impact_labels[impact_row]), border=1, fill=False, align='C')
             
             # Status cells (counts) - iterate through status_levels in same order
             self.set_font("Helvetica", "", 9)
@@ -2721,17 +2723,18 @@ class PDFReport(FPDF):
             for i, status in enumerate(status_levels):
                 count = matrix[impact_code][status]
                 
-                # Highlight High Impact + Failed in Red
-                if impact_code == 'HI' and status == 'Failed':
-                    self.set_fill_color(255, 200, 200)  # Light red
-                elif count > 0:
-                    self.set_fill_color(255, 255, 255)  # White
-                else:
-                    self.set_fill_color(250, 250, 250)  # Very light gray
+                # DISABLED: Background fill colors (may cause layering issues)
+                # if impact_code == 'HI' and status == 'Failed':
+                #     self.set_fill_color(255, 200, 200)  # Light red
+                # elif count > 0:
+                #     self.set_fill_color(255, 255, 255)  # White
+                # else:
+                #     self.set_fill_color(250, 250, 250)  # Very light gray
                 
                 self.set_xy(x_pos + (i * cell_width), row_y)
+                self.set_text_color(0, 0, 0)  # Force Black
                 count_text = str(count) if count > 0 else '-'
-                self.cell(cell_width, cell_height, clean_text(count_text), border=1, fill=True, align='C')
+                self.cell(cell_width, cell_height, clean_text(count_text), border=1, fill=False, align='C')
         
         # Move cursor below matrix
         self.set_y(start_y + (4 * cell_height))
@@ -2774,12 +2777,14 @@ class PDFReport(FPDF):
         for i, (label, count, color) in enumerate(status_config):
             x_pos = table_x + (i * col_width)
             self.set_xy(x_pos, table_y)
-            self.set_fill_color(*color)
-            self.set_draw_color(200, 200, 200)
+            # DISABLED: Background fill color (may cause layering issues)
+            # self.set_fill_color(*color)
+            # self.set_draw_color(200, 200, 200)
+            self.set_text_color(0, 0, 0)  # Force Black
             
             # Format: "Label: Count"
             cell_text = clean_text(f"{label}: {count}")
-            self.cell(col_width, table_height, cell_text, border=1, fill=True, align='C')
+            self.cell(col_width, table_height, cell_text, border=1, fill=False, align='C')
         
         # Move cursor below table
         self.set_y(table_y + table_height)
@@ -2875,7 +2880,7 @@ class PDFReport(FPDF):
             
             # Title first
             self.set_font("Helvetica", "B", 14)
-            self.set_text_color(31, 33, 33)
+            self.set_text_color(0, 0, 0)  # Force Black
             title_y = self.get_y()
             self.cell(0, 10, clean_text("Visual Analysis (Heatmap)"), ln=True, align="C")
             
@@ -2911,33 +2916,39 @@ class PDFReport(FPDF):
             # Heatmap Not Available - centered message with debugging info
             self.set_y(130)
             self.set_font("Helvetica", "I", 12)
-            self.set_text_color(128, 128, 128)
+            self.set_text_color(0, 0, 0)  # Force Black
             self.cell(0, 10, clean_text("[Heatmap Not Available]"), ln=True, align="C")
             
             # Debug info (only in development, can be removed in production)
             if heatmap_path:
                 self.set_font("Helvetica", "", 8)
+                self.set_text_color(0, 0, 0)  # Force Black
                 debug_text = f"Path attempted: {str(heatmap_path)[:50]}"
                 self.cell(0, 6, clean_text(debug_text), ln=True, align="C")
     
     def add_quick_wins(self, quick_wins):
         """Quick wins section with card-style formatting"""
         self.add_page()
+        # Force black text at start
+        self.set_text_color(0, 0, 0)  # Force Black
         self.set_font("Helvetica", "B", 14)
         self.cell(0, 10, clean_text("Top 3 Quick Wins"), ln=True)
         self.ln(5)
         
         for idx, win in enumerate(quick_wins[:3], 1):
-            self.set_fill_color(245, 245, 245)
-            self.set_draw_color(200, 200, 200)
+            # DISABLED: Background fill and draw color (may cause layering issues)
+            # self.set_fill_color(245, 245, 245)
+            # self.set_draw_color(200, 200, 200)
             self.set_font("Helvetica", "B", 11)
+            self.set_text_color(0, 0, 0)  # Force Black
             
             title = win.get('elementName', win.get('title', 'Issue'))
             cleaned_title = clean_text(str(title))
             header_text = clean_text(f" #{idx}: {cleaned_title}")
-            self.cell(0, 10, header_text, ln=True, border=1, fill=True)
+            self.cell(0, 10, header_text, ln=True, border=1, fill=False)
             
             self.set_font("Helvetica", "", 10)
+            self.set_text_color(0, 0, 0)  # Force Black
             fix_text = win.get('fix', {}).get('quickFix', 'N/A') if isinstance(win.get('fix'), dict) else str(win.get('fix', 'N/A'))
             cleaned_fix = clean_text(str(fix_text))
             fix_label_text = clean_text(f"Fix: {cleaned_fix}")
@@ -2950,6 +2961,9 @@ class PDFReport(FPDF):
         Professional audit card layout for individual audit items.
         Structure: Header (elementName + Status/Impact badge) -> Rationale -> Findings (Working/Broken) -> Fix box
         """
+        # Force black text at start
+        self.set_text_color(0, 0, 0)  # Force Black
+        
         # Keep Together Logic: Calculate height dynamically (Smarter Page Breaks)
         element_name = str(item.get('element', item.get('elementName', 'Element')))
         rationale_text = str(item.get('rationale', ''))
@@ -3039,10 +3053,9 @@ class PDFReport(FPDF):
         else:
             self.cell(name_width, 8, element_name, ln=0)
         
-            # Status/Impact Badge (black text - was colored, may be invisible)
-            badge_text = clean_text(f" [{status} | {readable_impact}]")
-            self.set_text_color(0, 0, 0)  # Force black text
-        
+        # Status/Impact Badge (black text - was colored, may be invisible)
+        badge_text = clean_text(f" [{status} | {readable_impact}]")
+        self.set_text_color(0, 0, 0)  # Force black text
         self.set_font("Helvetica", "", 10)
         badge_width = self.get_string_width(badge_text)
         # Check if badge fits on same line
@@ -3286,73 +3299,12 @@ def clean_text(text):
     Forces conversion to ASCII to eliminate any possibility of font rendering issues.
     This prevents Unicode errors that cause blank PDFs on Streamlit Cloud.
     """
-    if not text:
+    if text is None:
         return ""
     
-    # Force conversion to string and strip non-ASCII characters
-    text = str(text)
-    
-    # Replace smart quotes and common issue chars manually first
-    replacements = {
-        '\u2018': "'",  # Left single quote
-        '\u2019': "'",  # Right single quote
-        '\u201c': '"',  # Left double quote
-        '\u201d': '"',  # Right double quote
-        '\u2013': '-',  # En dash
-        '\u2014': '-',  # Em dash
-        '•': '-',
-        '–': '-',
-        '—': '-',
-        ''': "'",
-        ''': "'",
-        '"': '"',
-        '"': '"',
-        '…': '...',
-        '€': 'EUR',
-        '£': 'GBP',
-        '©': '(c)',
-        '®': '(R)',
-        '™': '(TM)',
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-    
-    # Replace common emojis with ASCII equivalents
-    emoji_replacements = {
-        "✅": "[+]",
-        "❌": "[X]",
-        "⚠️": "[!]",
-        "🔥": "[*]",
-        "📊": "",
-        "🚀": "",
-        "👁️": "",
-        "🧱": "",
-        "🎨": "",
-        "💡": "",
-        "⚡": "",
-        "🔍": "",
-        "📸": "",
-        "🌐": "",
-        "📡": "",
-        "😼": "",
-        "🟢": "[OK]",
-        "🟡": "[WARN]",
-        "🟠": "[CHECK]",
-        "🔴": "[FAIL]",
-        "⚪": "[N/A]",
-    }
-    for emoji, replacement in emoji_replacements.items():
-        text = text.replace(emoji, replacement)
-    
-    # CRITICAL: Encode to ASCII, ignoring errors (strips emojis/foreign chars)
-    # This is the most aggressive approach - eliminates ALL Unicode
-    try:
-        text = text.encode('ascii', 'ignore').decode('ascii')
-    except Exception:
-        # Last resort: return empty string
-        text = ""
-    
-    return text
+    # Force string, replace common smart quotes, then strip non-ASCII
+    text = str(text).replace("'", "'").replace('"', '"').replace('"', '"')
+    return text.encode('ascii', 'ignore').decode('ascii')
 
 def clean_text_for_pdf(text):
     """
@@ -3431,6 +3383,13 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
     
     try:
         pdf = PDFReport()
+        
+        # DEBUG PAGE: Test if PDF engine works
+        pdf.add_page()
+        pdf.set_font("Helvetica", size=12)
+        pdf.set_text_color(0, 0, 0)  # Force Black
+        pdf.cell(0, 10, "DEBUG: If you can see this, the PDF engine works.", ln=True)
+        pdf.ln(5)
         
         # Extract base URL if full URL provided
         base_url = None
