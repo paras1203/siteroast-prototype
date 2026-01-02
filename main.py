@@ -445,14 +445,15 @@ css = """
         box-shadow: none !important;
     }
     
-    /* Card Styling */
+    /* Card Styling - Thin separator instead of white rectangles */
     .css-card {
-        background-color: #FFFFFF;
-        border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border: 1px solid #F0F0F0;
-        margin-bottom: 20px;
+        background-color: transparent;
+        border-radius: 0;
+        padding: 0;
+        box-shadow: none;
+        border: none;
+        border-bottom: 2px solid #e0e0e0;
+        margin-bottom: 0.5rem;
     }
     
     /* Heatmap Image Rounded Corners */
@@ -2141,7 +2142,7 @@ def render_roi_dashboard(url: str, scan_data: dict = None):
     st.markdown("""
     <style>
     .roi-card {
-        background: white;
+        background: transparent;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         padding: 1.5rem;
@@ -2225,7 +2226,7 @@ def render_roi_dashboard(url: str, scan_data: dict = None):
         })
         
         max_visits = max(traffic, competitor_traffic)
-        y_max = int(max_visits * 1.25)  # 25% headroom
+        y_max = int(max_visits * 1.40)  # 40% headroom
         
         fig = px.bar(chart_data, x='Source', y='Monthly Visits',
                      color='Source',
@@ -2401,7 +2402,7 @@ def render_roi_page():
         })
         
         max_visits = max(traffic, competitor_traffic)
-        y_max = int(max_visits * 1.25)  # 25% headroom
+        y_max = int(max_visits * 1.40)  # 40% headroom
         
         fig = px.bar(chart_data, x='Source', y='Monthly Visits', 
                      color='Source',
@@ -2578,11 +2579,15 @@ class PDFReport(FPDF):
     
     def add_cover_page(self, metadata, score):
         """Cover page with proper spacing and breathing room - vertically centered"""
+        # Force black text at start - MUST BE FIRST LINE
+        self.set_text_color(0, 0, 0)  # Force Black
+        
         self.add_page()
         self.is_cover_page = True  # Turn off header
         
-        # Force black text at start
-        self.set_text_color(0, 0, 0)  # Force Black
+        # DEBUG MODE: CORE FONTS ACTIVE
+        self.set_font("Helvetica", "", 10)
+        self.cell(0, 10, clean_text("DEBUG MODE: CORE FONTS ACTIVE"), ln=True)
         
         # Vertical Center Calculation (Page Height ~297mm)
         self.set_y(110)
@@ -2606,10 +2611,10 @@ class PDFReport(FPDF):
     
     def add_roast_section(self, roast_data, overall_score, detailed_audit=None):
         """Executive summary section with proper text wrapping - Page 2"""
-        self.add_page()  # Force Page 2
-        
-        # Force black text at start
+        # Force black text at start - MUST BE FIRST LINE
         self.set_text_color(0, 0, 0)  # Force Black
+        
+        self.add_page()  # Force Page 2
         
         # Header
         self.set_font("Helvetica", "B", 16)
@@ -2625,21 +2630,56 @@ class PDFReport(FPDF):
         self.cell(0, 12, score_text, ln=True, fill=False)
         self.ln(10)
         
-        # Content (Handle Blank Data) - Split text by \n to create paragraphs
-        summary_text = roast_data.get('analysis', '') or roast_data.get('broadRoast', '') or roast_data.get('roastAnalysis', '') or roast_data.get('executiveSummary', 'Analysis pending...')
-        cleaned_text = clean_text(str(summary_text))
+        # Content - Include both Summary and Analysis
+        summary_text = roast_data.get('executiveSummary', '') or roast_data.get('hook', '') or roast_data.get('broadRoast', '')
+        analysis_text = roast_data.get('roastAnalysis', '') or roast_data.get('analysis', '')
         
-        # Split by newlines to create paragraphs
-        paragraphs = cleaned_text.split('\n')
+        # Write Summary
+        if summary_text:
+            self.set_font("Helvetica", "B", 12)
+            self.set_text_color(0, 0, 0)
+            self.cell(0, 8, clean_text("Summary:"), ln=True)
+            self.set_font("Helvetica", "", 11)
+            cleaned_summary = clean_text(str(summary_text))
+            summary_paragraphs = cleaned_summary.split('\n')
+            for para in summary_paragraphs:
+                para = para.strip()
+                if para:
+                    self.set_text_color(0, 0, 0)
+                    self.multi_cell(0, 6, clean_text(para))
+                    self.ln(3)
+            self.ln(5)
         
-        self.set_font("Helvetica", "", 11)
-        self.set_text_color(0, 0, 0)  # Force black text
-        for para in paragraphs:
-            para = para.strip()
-            if para:
-                self.set_text_color(0, 0, 0)  # Force black text before each cell
-                self.multi_cell(0, 6, clean_text(para))
-                self.ln(3)  # Space between paragraphs
+        # Write Analysis - Split into multiple paragraphs (2-3 sentences each)
+        if analysis_text:
+            self.set_font("Helvetica", "B", 12)
+            self.set_text_color(0, 0, 0)
+            self.cell(0, 8, clean_text("Analysis:"), ln=True)
+            self.set_font("Helvetica", "", 11)
+            cleaned_analysis = clean_text(str(analysis_text))
+            
+            # Split analysis into sentences and group into paragraphs of 2-3 sentences
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', cleaned_analysis)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            
+            # Group into paragraphs of 2-3 sentences
+            para_sentences = []
+            current_para = []
+            for i, sentence in enumerate(sentences):
+                current_para.append(sentence)
+                if len(current_para) >= 3 or (len(current_para) >= 2 and i == len(sentences) - 1):
+                    para_sentences.append(' '.join(current_para))
+                    current_para = []
+            if current_para:
+                para_sentences.append(' '.join(current_para))
+            
+            # Write paragraphs
+            for para in para_sentences:
+                if para:
+                    self.set_text_color(0, 0, 0)
+                    self.multi_cell(0, 6, clean_text(para))
+                    self.ln(3)
         
         self.ln(10)
         
@@ -2790,6 +2830,56 @@ class PDFReport(FPDF):
         # Move cursor below table
         self.set_y(table_y + table_height)
         self.ln(5)
+    
+    def add_radar_section(self, radar_chart_path):
+        """Performance Radar section - Centered Radar Chart"""
+        if radar_chart_path and os.path.exists(radar_chart_path):
+            self.add_page()
+            self.set_text_color(0, 0, 0)  # Force Black
+            
+            # Title
+            self.set_font("Helvetica", "B", 16)
+            self.cell(0, 10, clean_text("Performance Radar (Priority Matrix)"), ln=True, align="C")
+            self.ln(10)
+            
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(radar_chart_path)
+                img_width, img_height = img.size
+                
+                # Calculate dimensions to fit page (centered)
+                page_width = 210  # A4 width in mm
+                max_width = 150  # Max width in mm
+                max_height = 150  # Max height in mm
+                
+                aspect_ratio = img_width / img_height
+                
+                if aspect_ratio > 1:
+                    # Landscape
+                    display_width = min(max_width, page_width - 40)
+                    display_height = display_width / aspect_ratio
+                else:
+                    # Portrait
+                    display_height = min(max_height, 150)
+                    display_width = display_height * aspect_ratio
+                
+                # Center horizontally
+                x_pos = (page_width - display_width) / 2
+                y_pos = self.get_y()
+                
+                self.image(radar_chart_path, x=x_pos, y=y_pos, w=display_width, h=display_height)
+                self.set_y(y_pos + display_height + 10)
+            except Exception as e:
+                safe_print(f"[PDF] Failed to add radar chart: {safe_error_message(str(e))}")
+                self.set_font("Helvetica", "I", 12)
+                self.cell(0, 10, clean_text("[Radar Chart Not Available]"), ln=True, align="C")
+        else:
+            # Add page even if no chart
+            self.add_page()
+            self.set_font("Helvetica", "B", 16)
+            self.cell(0, 10, clean_text("Performance Radar (Priority Matrix)"), ln=True, align="C")
+            self.set_font("Helvetica", "I", 12)
+            self.cell(0, 10, clean_text("[Radar Chart Not Available]"), ln=True, align="C")
     
     def add_visuals_section(self, heatmap_path):
         """Visual analysis section with proper image placement - Page 3 - Centered Heatmap"""
@@ -3009,19 +3099,53 @@ class PDFReport(FPDF):
         if not_working:
             not_working_height = 6 + (len(not_working[:5]) * line_height) + 2
         
+        # Conversion Impact height
+        conversion_impact = item.get('conversionImpact', '')
+        conversion_impact_height = 0
+        if conversion_impact:
+            self.set_font("Helvetica", "", 9)
+            impact_clean = clean_text(str(conversion_impact))
+            avg_char_width = 2.8
+            text_width = len(impact_clean) * avg_char_width
+            lines_impact = max(1, int(text_width / self.usable_width) + 1)
+            conversion_impact_height = 8 + (lines_impact * 5) + 2  # Label + text lines + spacing
+        
         # Fix box height
         fix_height = 0
         if len(fix_text) > 5:
             self.set_font("Helvetica", "", 10)
             fix_clean = clean_text(str(fix_text))
-            # Estimate lines for fix text (border adds extra height)
+            # Estimate lines for fix text
             avg_char_width = 2.8
             text_width = len(fix_clean) * avg_char_width
             lines_fix = max(1, int(text_width / self.usable_width) + 1)
-            fix_height = 8 + (lines_fix * 6) + 12  # Label + text lines + border padding
+            fix_height = 8 + (lines_fix * 6) + 2  # Label + text lines + spacing
+        
+        # Fix Example height
+        fix_obj = item.get('fix', {})
+        fix_example = fix_obj.get('example', '') if isinstance(fix_obj, dict) else ''
+        fix_example_height = 0
+        if fix_example and len(str(fix_example).strip()) > 5:
+            self.set_font("Helvetica", "", 9)
+            example_clean = clean_text(str(fix_example))
+            avg_char_width = 2.8
+            text_width = len(example_clean) * avg_char_width
+            lines_example = max(1, int(text_width / self.usable_width) + 1)
+            fix_example_height = 8 + (lines_example * 5) + 4  # Label + text lines + border padding
+        
+        # Expected Impact height
+        fix_expected_impact = fix_obj.get('expectedImpact', '') if isinstance(fix_obj, dict) else ''
+        expected_impact_height = 0
+        if fix_expected_impact and len(str(fix_expected_impact).strip()) > 5:
+            self.set_font("Helvetica", "", 9)
+            expected_clean = clean_text(str(fix_expected_impact))
+            avg_char_width = 2.8
+            text_width = len(expected_clean) * avg_char_width
+            lines_expected = max(1, int(text_width / self.usable_width) + 1)
+            expected_impact_height = 8 + (lines_expected * 5) + 2  # Label + text lines + spacing
         
         # Total required height with safety margin
-        required_height = header_height + rationale_height + working_height + not_working_height + fix_height + 5
+        required_height = header_height + rationale_height + working_height + not_working_height + conversion_impact_height + fix_height + fix_example_height + expected_impact_height + 5
         
         # Check if card will fit on current page
         page_bottom = 275  # 297mm page height - 22mm footer margin
@@ -3116,27 +3240,66 @@ class PDFReport(FPDF):
                 self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
             self.ln(2)
         
-        # The Fix: Light grey box with Action Plan
+        # Conversion Impact
+        conversion_impact = item.get('conversionImpact', '')
+        if conversion_impact:
+            self.set_x(15)
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(0, 0, 0)  # Force black text
+            self.cell(self.usable_width, 6, clean_text("Conversion Impact:"), ln=True)
+            self.set_font("Helvetica", "", 9)
+            self.set_text_color(0, 0, 0)  # Force black text
+            impact_clean = clean_text(str(conversion_impact))
+            self.multi_cell(self.usable_width, 5, impact_clean, 0, 'L')
+            self.ln(2)
+        
+        # The Fix: Action Plan
         fix_obj = item.get('fix', {})
         fix_text = fix_obj.get('quickFix', '') if isinstance(fix_obj, dict) else str(fix_obj)
+        fix_example = fix_obj.get('example', '') if isinstance(fix_obj, dict) else ''
+        fix_expected_impact = fix_obj.get('expectedImpact', '') if isinstance(fix_obj, dict) else ''
         
         # CRITICAL FIX: Strip whitespace and check length
         fix_text = fix_text.strip() if fix_text else ''
         
         if len(fix_text) > 5:  # Only draw if real text exists
             self.ln(2)
-            # DISABLED: Background box (layering check - may be drawing on top of text)
-            # self.set_fill_color(249, 249, 249)
-            # self.rect(self.get_x(), self.get_y(), 190, total_h, 'F')
+            self.set_x(15)
             self.set_font("Helvetica", "B", 10)
             self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(0, 8, clean_text("Action Plan:"), ln=True)
+            self.cell(self.usable_width, 8, clean_text("Action Plan:"), ln=True)
             
             self.set_font("Helvetica", "", 10)
             self.set_text_color(0, 0, 0)  # Force black text
             cleaned_fix = clean_text(str(fix_text))
-            # Use border=1 to draw the box, but ensure text is inside
-            self.multi_cell(0, 6, cleaned_fix, border=1, fill=False)
+            self.multi_cell(self.usable_width, 6, cleaned_fix, 0, 'L')
+            self.ln(2)
+        
+        # Fix Example
+        if fix_example and len(str(fix_example).strip()) > 5:
+            self.set_x(15)
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(0, 0, 0)  # Force black text
+            self.cell(self.usable_width, 8, clean_text("Example:"), ln=True)
+            
+            self.set_font("Helvetica", "", 9)
+            self.set_text_color(0, 0, 0)  # Force black text
+            example_clean = clean_text(str(fix_example))
+            # Use border=1 to create a code-like box
+            self.multi_cell(self.usable_width, 5, example_clean, border=1, fill=False, align='L')
+            self.ln(2)
+        
+        # Expected Impact
+        if fix_expected_impact and len(str(fix_expected_impact).strip()) > 5:
+            self.set_x(15)
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(0, 0, 0)  # Force black text
+            self.cell(self.usable_width, 8, clean_text("Expected Impact:"), ln=True)
+            
+            self.set_font("Helvetica", "", 9)
+            self.set_text_color(0, 0, 0)  # Force black text
+            expected_clean = clean_text(str(fix_expected_impact))
+            self.multi_cell(self.usable_width, 5, expected_clean, 0, 'L')
             self.ln(2)
         
         # Spacing: 5mm padding between cards
@@ -3355,10 +3518,10 @@ def safe_print(*args, **kwargs):
         except:
             pass  # If even that fails, silently continue
 
-def generate_html_report(data, overall_score):
+def generate_html_report(data, overall_score, screenshot_path=None, radar_chart_path=None, stitched_heatmap_path=None, site_url=None):
     """
-    Generate a styled HTML report from audit JSON data.
-    This serves as a fallback when PDF generation fails.
+    Generate a comprehensive HTML report from audit JSON data.
+    Includes all details: executive summary, priority matrix, heatmap, screenshot, deep dive details, etc.
     """
     # Basic CSS for a professional look
     css = """
@@ -3468,6 +3631,73 @@ def generate_html_report(data, overall_score):
             border-radius: 4px;
             border-left: 4px solid #ffc107;
         }
+        .working-well {
+            background: #d4edda;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #28a745;
+        }
+        .working-well h4 {
+            color: #155724;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .working-well ul {
+            margin-left: 20px;
+            color: #155724;
+        }
+        .working-well li {
+            margin: 5px 0;
+        }
+        .not-working {
+            background: #f8d7da;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #dc3545;
+        }
+        .not-working h4 {
+            color: #721c24;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .not-working ul {
+            margin-left: 20px;
+            color: #721c24;
+        }
+        .not-working li {
+            margin: 5px 0;
+        }
+        .conversion-impact {
+            background: #e7f3ff;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #0066cc;
+        }
+        .conversion-impact strong {
+            color: #0066cc;
+        }
+        .fix-example {
+            background: #f8f9fa;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .fix-expected-impact {
+            background: #e7f5e7;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #28a745;
+        }
+        .fix-expected-impact strong {
+            color: #155724;
+        }
     </style>
     """
     
@@ -3482,14 +3712,162 @@ def generate_html_report(data, overall_score):
     <body>
         <div class="container">
             <div class="score-box">
-                <h1>SiteRoast Audit Report</h1>
+                <h1>SiteRoast Conversion Audit Report</h1>
                 <div class="score">{overall_score}/100</div>
-                <p>Generated by SiteRoast.ai</p>
+                <p style="margin-top: 20px; font-size: 1.1em;">Client: {site_url or 'N/A'}</p>
+                <p style="margin-top: 10px; font-size: 1.1em;">Generated: {time.strftime('%B %d, %Y')}</p>
             </div>
             
-            <h2>🔥 Roast Summary</h2>
-            <p>{data.get('roast_summary') or data.get('headline_roast') or data.get('overview', {}).get('executiveSummary', 'No summary available.')}</p>
+            <h2>🔥 Executive Summary</h2>
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #667eea; margin-bottom: 10px;">Summary:</h3>
+                <p>{data.get('roast_summary') or data.get('headline_roast') or data.get('overview', {}).get('executiveSummary', 'No summary available.')}</p>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #667eea; margin-bottom: 10px;">Analysis:</h3>
+    """
+    
+    # Split analysis into multiple paragraphs (2-3 sentences each)
+    analysis_text = data.get('overview', {}).get('roastAnalysis', '')
+    if analysis_text:
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', str(analysis_text))
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        # Group into paragraphs of 2-3 sentences
+        para_sentences = []
+        current_para = []
+        for i, sentence in enumerate(sentences):
+            current_para.append(sentence)
+            if len(current_para) >= 3 or (len(current_para) >= 2 and i == len(sentences) - 1):
+                para_sentences.append(' '.join(current_para))
+                current_para = []
+        if current_para:
+            para_sentences.append(' '.join(current_para))
+        
+        for para in para_sentences:
+            if para:
+                html += f'<p style="margin-bottom: 12px;">{para}</p>'
+    else:
+        html += '<p>Analysis completed.</p>'
+    
+    html += """
+            </div>
+    """
+    
+    # Add Priority Matrix (below Executive Summary)
+    detailed_audit = data.get('detailedAudit', {})
+    if detailed_audit:
+        # Flatten all items from detailedAudit
+        all_items = []
+        for category, items in detailed_audit.items():
+            if isinstance(items, list):
+                all_items.extend(items)
+        
+        if all_items:
+            # Build Priority Matrix
+            matrix = {}
+            impact_levels = ['HI', 'MI', 'LI']
+            status_levels = ['Failed', 'Needs Improvement', 'Satisfactory', 'Good', 'Excellent']
             
+            # Initialize matrix
+            for impact in impact_levels:
+                matrix[impact] = {}
+                for status in status_levels:
+                    matrix[impact][status] = 0
+            
+            # Count items in each bucket
+            for item in all_items:
+                impact = item.get('impact', 'MI')
+                status = item.get('status', 'Satisfactory')
+                if impact in matrix and status in matrix[impact]:
+                    matrix[impact][status] += 1
+            
+            # Generate HTML table
+            html += """
+            <h2>📊 Priority Matrix: Where to Start</h2>
+            <div style="margin: 20px 0; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: white; border: 1px solid #ddd;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">Impact</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">Failed</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">Needs Improvement</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">Satisfactory</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">Good</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">Excellent</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            
+            impact_labels = {'HI': 'High', 'MI': 'Medium', 'LI': 'Low'}
+            impact_colors = {'HI': '#ffcccc', 'MI': '#fff4cc', 'LI': '#e6f3ff'}
+            
+            for impact_code in impact_levels:
+                impact_label = impact_labels[impact_code]
+                bg_color = impact_colors[impact_code]
+                html += f"""
+                        <tr style="background: {bg_color};">
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{impact_label}</td>
+                """
+                for status in status_levels:
+                    count = matrix[impact_code][status]
+                    count_text = str(count) if count > 0 else '-'
+                    # Highlight high-impact failures
+                    cell_style = "padding: 12px; border: 1px solid #ddd; text-align: center;"
+                    if impact_code == 'HI' and status == 'Failed' and count > 0:
+                        cell_style += " background: #ff9999; font-weight: bold; color: #cc0000;"
+                    html += f'<td style="{cell_style}">{count_text}</td>'
+                html += "</tr>"
+            
+            html += """
+                    </tbody>
+                </table>
+            </div>
+            <p style="color: #666; font-size: 0.9em; margin-top: 10px;">Focus on High Impact + Failed items first for maximum conversion gains.</p>
+            """
+    
+    # Add Radar Chart (Priority Matrix)
+    if radar_chart_path and os.path.exists(radar_chart_path):
+        try:
+            with open(radar_chart_path, 'rb') as img_file:
+                img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                html += f"""
+            <h2>📊 Performance Radar (Priority Matrix)</h2>
+            <div style="text-align: center; margin: 20px 0;">
+                <img src="data:image/png;base64,{img_data}" alt="Performance Radar Chart" style="max-width: 100%; height: auto; margin: 0 auto; display: block;" />
+            </div>
+            """
+        except Exception as e:
+            safe_print(f"[HTML Report] Failed to include radar chart: {safe_error_message(str(e))}")
+    
+    # Add Screenshot
+    if screenshot_path and os.path.exists(screenshot_path):
+        try:
+            with open(screenshot_path, 'rb') as img_file:
+                img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                html += f"""
+            <h2>📸 Landing Page Screenshot</h2>
+            <img src="data:image/png;base64,{img_data}" alt="Landing Page Screenshot" style="max-width: 100%; height: auto; margin: 20px 0; border: 1px solid #ddd; border-radius: 8px;" />
+            """
+        except Exception as e:
+            safe_print(f"[HTML Report] Failed to include screenshot: {safe_error_message(str(e))}")
+    
+    # Add Heatmap
+    if stitched_heatmap_path and os.path.exists(stitched_heatmap_path):
+        try:
+            with open(stitched_heatmap_path, 'rb') as img_file:
+                img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                html += f"""
+            <h2>🔥 Visual Saliency Heatmap</h2>
+            <p>Heatmap showing where users' eyes are drawn on your landing page.</p>
+            <img src="data:image/png;base64,{img_data}" alt="Heatmap" style="max-width: 100%; height: auto; margin: 20px 0; border: 1px solid #ddd; border-radius: 8px;" />
+            """
+        except Exception as e:
+            safe_print(f"[HTML Report] Failed to include heatmap: {safe_error_message(str(e))}")
+    
+    html += """
             <h2>🚀 Quick Wins</h2>
     """
     
@@ -3541,11 +3919,23 @@ def generate_html_report(data, overall_score):
                     status = item.get('status', 'Unknown')
                     element_name = item.get('elementName', item.get('element', 'Element'))
                     rationale = item.get('rationale', 'No rationale provided.')
+                    impact_raw = item.get('impact', 'MI')
+                    impact_map = {'HI': 'High Impact', 'MI': 'Medium Impact', 'LI': 'Low Impact'}
+                    readable_impact = impact_map.get(impact_raw, 'Medium Impact')
+                    
+                    working_well = item.get('workingWell', item.get('working', []))
+                    not_working = item.get('notWorking', item.get('not_working', []))
+                    conversion_impact = item.get('conversionImpact', '')
+                    
                     fix_obj = item.get('fix', {})
                     if isinstance(fix_obj, dict):
                         quick_fix = fix_obj.get('quickFix', '')
+                        fix_example = fix_obj.get('example', '')
+                        fix_expected_impact = fix_obj.get('expectedImpact', '')
                     else:
                         quick_fix = str(fix_obj) if fix_obj else ''
+                        fix_example = ''
+                        fix_expected_impact = ''
                     
                     # Determine badge class based on status
                     if status in ['Failed', 'Needs Improvement']:
@@ -3557,15 +3947,72 @@ def generate_html_report(data, overall_score):
                     
                     html += f"""
                     <div class="audit-item">
-                        <span class="{badge_class}">{status}</span>
-                        <strong>{element_name}</strong>
-                        <p>{rationale}</p>
+                        <div style="margin-bottom: 10px;">
+                            <span class="{badge_class}">{status}</span>
+                            <span class="badge-yellow" style="background: #6c757d;">{readable_impact}</span>
+                            <strong style="font-size: 1.1em; margin-left: 10px;">{element_name}</strong>
+                        </div>
+                        <p style="font-style: italic; color: #666; margin: 10px 0;">{rationale}</p>
                     """
                     
+                    # What's Working
+                    if working_well and isinstance(working_well, list) and len(working_well) > 0:
+                        html += """
+                        <div class="working-well">
+                            <h4>✅ What's Working:</h4>
+                            <ul>
+                        """
+                        for w in working_well:
+                            html += f"<li>{w}</li>"
+                        html += """
+                            </ul>
+                        </div>
+                        """
+                    
+                    # What's Broken
+                    if not_working and isinstance(not_working, list) and len(not_working) > 0:
+                        html += """
+                        <div class="not-working">
+                            <h4>❌ What's Broken:</h4>
+                            <ul>
+                        """
+                        for nw in not_working:
+                            html += f"<li>{nw}</li>"
+                        html += """
+                            </ul>
+                        </div>
+                        """
+                    
+                    # Conversion Impact
+                    if conversion_impact:
+                        html += f"""
+                        <div class="conversion-impact">
+                            <strong>📊 Conversion Impact:</strong> {conversion_impact}
+                        </div>
+                        """
+                    
+                    # Action Plan
                     if quick_fix:
                         html += f"""
                         <div class="action-plan">
-                            <strong>💡 Action:</strong> {quick_fix}
+                            <strong>💡 Action Plan:</strong> {quick_fix}
+                        </div>
+                        """
+                    
+                    # Fix Example
+                    if fix_example:
+                        html += f"""
+                        <div class="fix-example">
+                            <strong>📝 Example:</strong><br>
+                            {fix_example}
+                        </div>
+                        """
+                    
+                    # Expected Impact
+                    if fix_expected_impact:
+                        html += f"""
+                        <div class="fix-expected-impact">
+                            <strong>🎯 Expected Impact:</strong> {fix_expected_impact}
                         </div>
                         """
                     
@@ -3690,6 +4137,13 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
             pdf.ln(5)
             pdf.cell(0, 10, clean_text(f"Overall Score: {overall_score}/100"), ln=True)
             safe_print(f"[PDF] Fallback roast section added. Page count: {pdf.page_no()}")
+        
+        # Add Radar Chart Section (centered)
+        try:
+            pdf.add_radar_section(radar_chart_path)
+            safe_print(f"[PDF] Radar section added successfully. Page count: {pdf.page_no()}")
+        except Exception as e:
+            safe_print(f"[ERROR] Radar section failed: {safe_error_message(str(e))}")
         
         try:
             pdf.add_visuals_section(stitched_heatmap_path)
@@ -4018,21 +4472,9 @@ def main():
     elif env_path_default.exists():
         load_dotenv(env_path_default, override=True)
     
-    # Sidebar Navigation
-    with st.sidebar:
-        st.markdown("## 🎯 Choose Your Tool")
-        st.markdown("---")
-        
-        if "page_mode" not in st.session_state:
-            st.session_state.page_mode = "full_audit"
-        
-        if st.button("🔍 Full Deep Audit ($19)", key="nav_full_audit", use_container_width=True, type="primary" if st.session_state.page_mode == "full_audit" else "secondary"):
-            st.session_state.page_mode = "full_audit"
-            st.rerun()
-        
-        if st.button("💰 Free Revenue Check", key="nav_roi", use_container_width=True, type="primary" if st.session_state.page_mode == "roi" else "secondary"):
-            st.session_state.page_mode = "roi"
-            st.rerun()
+    # Sidebar removed - navigation handled elsewhere
+    if "page_mode" not in st.session_state:
+        st.session_state.page_mode = "full_audit"
     
     # Route to appropriate page
     if st.session_state.page_mode == "roi":
@@ -4043,7 +4485,7 @@ def main():
     # Hero Section (Centered Layout)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown('<h1 class="main-title">🔥 SiteRoast</h1>', unsafe_allow_html=True)
+        st.markdown('<h1 class="main-title">SiteRoast</h1>', unsafe_allow_html=True)
         st.markdown('<p class="sub-header">The Brutal Conversion Audit</p>', unsafe_allow_html=True)
         
         # Check API key (with quote stripping)
@@ -4297,22 +4739,8 @@ def main():
                 st.warning(f"**[*] The Roast:**\n\n{roast_summary}")
             return
         
-        # Create tabs for Main Report and ROI Dashboard
-        audit_url = st.session_state.get("audit_url", "")
-        has_roi_data = "roi_dashboard_data" in st.session_state
-        
-        if has_roi_data:
-            tab1, tab2 = st.tabs(["📊 Full Audit Report", "💰 Free ROI Check"])
-            
-            with tab1:
-                # DASHBOARD GRID LAYOUT
-                render_main_audit_dashboard(roast_data)
-            
-            with tab2:
-                render_roi_dashboard(audit_url, st.session_state.roi_dashboard_data)
-        else:
-            # DASHBOARD GRID LAYOUT
-            render_main_audit_dashboard(roast_data)
+        # DASHBOARD GRID LAYOUT - Show audit report directly (no tabs)
+        render_main_audit_dashboard(roast_data)
 
 def render_main_audit_dashboard(roast_data):
     """
@@ -4322,7 +4750,7 @@ def render_main_audit_dashboard(roast_data):
     
     # Top Row: Full-width card with Verdict/Score
     with st.container():
-        st.markdown('<div class="css-card">', unsafe_allow_html=True)
+        st.markdown('<div class="css-card" style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;">', unsafe_allow_html=True)
         col_top1, col_top2, col_top3 = st.columns([1, 1, 1])
         with col_top1:
             score = roast_data.get("overall_score", 50)
@@ -4357,8 +4785,14 @@ def render_main_audit_dashboard(roast_data):
                 
                 # Generate HTML Report
                 overall_score = roast_data.get("overall_score", 50)
-                html_report = generate_html_report(roast_data, overall_score)
-                b64_html = base64.b64encode(html_report.encode()).decode()
+                html_report = generate_html_report(roast_data, overall_score, screenshot_path, radar_chart_path, stitched_heatmap_path, site_url)
+                
+                # Validate HTML report was generated
+                if not html_report or len(html_report) < 100:
+                    st.error("⚠️ HTML report generation failed. Report may be incomplete.")
+                    html_report = "<html><body><h1>Report Generation Error</h1><p>The HTML report could not be generated.</p></body></html>"
+                
+                b64_html = base64.b64encode(html_report.encode('utf-8')).decode('utf-8')
                 
                 # Display Buttons Side-by-Side
                 col1, col2 = st.columns(2)
@@ -4379,11 +4813,13 @@ def render_main_audit_dashboard(roast_data):
                         st.error(f"PDF Error: {error_msg[:50]}")
                 
                 with col2:
-                    # HTML Report Button (opens in new window)
-                    href = f'data:text/html;base64,{b64_html}'
-                    st.markdown(
-                        f'<a href="{href}" target="_blank" style="display: inline-block; width: 100%; padding: 0.5rem 1rem; background-color: #667eea; color: white; text-align: center; text-decoration: none; border-radius: 0.25rem; font-weight: 500;">🌐 View Web Report</a>',
-                        unsafe_allow_html=True
+                    # Download HTML button (same size as PDF)
+                    st.download_button(
+                        label="📥 Download HTML",
+                        data=html_report.encode('utf-8'),
+                        file_name=f"siteroast_audit_{int(time.time())}.html",
+                        mime="text/html",
+                        use_container_width=True
                     )
                 
                 # Cleanup temp files
@@ -4398,14 +4834,28 @@ def render_main_audit_dashboard(roast_data):
                 st.error(f"Error generating reports: {error_msg}")
         st.markdown('</div>', unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allow_html=True)
+    # 3x2 Grid: Shocker Metrics (above Performance Radar and Executive Summary)
+    # Get scan data for calculations
+    scan_data = st.session_state.get("roi_dashboard_data", {})
+    page_height = scan_data.get('page_height', 3000)
+    default_price = scan_data.get('price_guess', 50.0)
+    default_industry = scan_data.get('industry_guess', 'SaaS')
+    default_traffic = st.session_state.get("roi_traffic", 1000)
+    price = st.session_state.get("roi_price", default_price)
+    traffic = st.session_state.get("roi_traffic", default_traffic)
+    industry = st.session_state.get("roi_industry", default_industry)
     
-    # Middle Row: 50/50 Split - Radar Chart & Executive Summary
-    col_mid_left, col_mid_right = st.columns(2)
-
-    with col_mid_left:
-        st.markdown('<div class="css-card">', unsafe_allow_html=True)
-        st.subheader("📊 Performance Radar")
+    lift = 0.02
+    lost_revenue = (traffic * lift * price * 12)
+    cost = 19
+    roi_percent = (lost_revenue / cost * 100) if cost > 0 else 0
+    
+    # Row 1: Performance Radar, Cost of Inaction, Scroll of Death
+    grid_row1_col1, grid_row1_col2, grid_row1_col3 = st.columns(3)
+    
+    with grid_row1_col1:
+        st.markdown('<div class="css-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 240px; position: relative; padding-bottom: 2.5rem; margin-bottom: 0;">', unsafe_allow_html=True)
+        st.markdown('<h3 style="text-align: center; margin-bottom: 0.5rem; font-size: 1rem;">📊 Performance Radar</h3>', unsafe_allow_html=True)
         
         # Build radar data - ALWAYS use these 6 standardized metrics
         radar_scores = roast_data.get("radar_scores", {})
@@ -4444,8 +4894,8 @@ def render_main_audit_dashboard(roast_data):
                 fig = px.line_polar(df, r='r', theta='theta', line_close=True)
                 fig.update_traces(
                     fill='toself',
-                    line_color='#667eea',  # Site primary color (gradient blue-purple)
-                    fillcolor='rgba(102, 126, 234, 0.3)'  # Matching theme color
+                    line_color='#667eea',
+                    fillcolor='rgba(102, 126, 234, 0.3)'
                 )
                 fig.update_layout(
                     polar=dict(
@@ -4456,27 +4906,28 @@ def render_main_audit_dashboard(roast_data):
                             tick0=0,
                             dtick=20,
                             tickfont=dict(size=10),
-                            gridcolor='rgba(150, 150, 150, 0.5)',  # More visible grid lines
+                            gridcolor='rgba(150, 150, 150, 0.5)',
                             showline=True,
-                            linecolor='rgba(150, 150, 150, 0.5)',  # More visible outer line
+                            linecolor='rgba(150, 150, 150, 0.5)',
                             gridwidth=1,
                             linewidth=1
                         ),
                         angularaxis=dict(
                             showline=True,
-                            linecolor='rgba(150, 150, 150, 0.3)',  # Show angular grid lines
+                            linecolor='rgba(150, 150, 150, 0.3)',
                             gridcolor='rgba(150, 150, 150, 0.3)',
                             gridwidth=1,
                             linewidth=1
                         ),
-                        bgcolor='rgba(0,0,0,0)'  # Transparent polar background
+                        bgcolor='rgba(0,0,0,0)'
                     ),
                     showlegend=False,
-                    paper_bgcolor='rgba(0,0,0,0)',  # Transparent background
-                    plot_bgcolor='rgba(0,0,0,0)',   # Transparent plot area
-                    font=dict(family="Helvetica", size=12)
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(family="Helvetica", size=12),
+                    height=250  # Reduced to match other grid items
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
                 
                 # Save radar chart as image for PDF (with transparent background)
                 try:
@@ -4490,99 +4941,242 @@ def render_main_audit_dashboard(roast_data):
                     st.caption(f"Note: Chart export error: {str(e)[:30]}")
         else:
             st.info("No radar data")
-        st.markdown('<p style="color: #667eea; font-weight: bold; font-size: 1.1rem; margin-top: 1rem;">Leaders score 80+</p>', unsafe_allow_html=True)
+        st.markdown('<p style="text-align: center; margin-top: 0.5rem; color: white; font-size: 0.85rem;">Overall performance across <span style="color: #667eea; font-weight: bold;">6 key metrics</span></p>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
-    with col_mid_right:
-        st.markdown('<div class="css-card">', unsafe_allow_html=True)
-        st.subheader("🔥 Executive Summary")
-        
-        # Show roast_summary (check multiple possible fields)
-        roast_summary = (
-                roast_data.get("roastSummary") or 
-                roast_data.get("roast_summary") or 
-                roast_data.get("overview", {}).get("executiveSummary") or 
-                roast_data.get("headline_roast") or 
-                "Analysis completed"
-            )
-        if roast_summary and roast_summary.strip():
-            st.markdown(roast_summary)
-        else:
-            st.warning("Executive summary is being generated...")
-        
-        # Show roast analysis if available
-        roast_analysis = roast_data.get("overview", {}).get("roastAnalysis")
-        if roast_analysis and roast_analysis.strip():
-            st.markdown(f'**Analysis:**\n\n{roast_analysis}')
-        
-        # Show summary bullets
-        summary_bullets = roast_data.get("summary_bullets", [])
-        if summary_bullets:
-            st.markdown("**Key Findings:**")
-            for bullet in summary_bullets[:5]:
-                if "✅" in bullet:
-                    st.success(bullet)
-                elif "❌" in bullet:
-                    st.error(bullet)
-                else:
-                    st.info(bullet)
-        
-        # Show heatmap of ONLY the first screenshot (Hero section)
-        st.markdown("**Visual Saliency - First Impression**")
-        if "captured_images" in st.session_state and st.session_state.captured_images:
-            try:
-                hero_image = st.session_state.captured_images[0]
-                hero_heatmap = generate_heatmap(hero_image)
-                
-                # Save heatmap to temp directory for PDF (use tempfile for cloud compatibility)
-                temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
-                os.makedirs(temp_dir, exist_ok=True)
-                heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
-                hero_heatmap.save(heatmap_path)
-                st.session_state.heatmap_path = heatmap_path
-                
-                # Create stitched heatmap for PDF (if multiple images)
-                if len(st.session_state.captured_images) > 1:
-                    try:
-                        heatmap_images = [generate_heatmap(img) for img in st.session_state.captured_images[:3]]
-                        stitched_heatmap = stitch_images(heatmap_images, max_images=3)
-                        if stitched_heatmap:
-                            stitched_heatmap_path = os.path.join(temp_dir, f"stitched_heatmap_{int(time.time())}.png")
-                            stitched_heatmap.save(stitched_heatmap_path)
-                            st.session_state.stitched_heatmap_path = stitched_heatmap_path
-                    except Exception as stitch_error:
-                        safe_print(f"[WARNING] Stitched heatmap failed: {safe_error_message(str(stitch_error))}")
-                        st.session_state.stitched_heatmap_path = heatmap_path  # Fallback to single heatmap
-                else:
-                    st.session_state.stitched_heatmap_path = heatmap_path
-                
-                st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
-            except Exception as e:
-                safe_print(f"[ERROR] Heatmap generation failed: {safe_error_message(str(e))}")
-                st.warning("Heatmap generation failed. Showing original screenshot.")
-                st.image(hero_image, caption="Hero Section (Heatmap unavailable)", use_container_width=True)
-        elif "uploaded_files" in st.session_state and st.session_state.uploaded_files:
-            try:
-                first_file = st.session_state.uploaded_files[0]
-                hero_image = Image.open(first_file)
-                hero_heatmap = generate_heatmap(hero_image)
-                
-                # Save heatmap for PDF (use tempfile for cloud compatibility)
-                temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
-                os.makedirs(temp_dir, exist_ok=True)
-                heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
-                hero_heatmap.save(heatmap_path)
-                st.session_state.heatmap_path = heatmap_path
-                st.session_state.stitched_heatmap_path = heatmap_path
-                
-                st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
-            except Exception as e:
-                safe_print(f"[ERROR] Heatmap generation failed: {safe_error_message(str(e))}")
-                st.warning("Heatmap generation failed. Showing original screenshot.")
-                st.image(hero_image, caption="Hero Section (Heatmap unavailable)", use_container_width=True)
-        else:
-            st.info("No screenshot available")
+    with grid_row1_col2:
+        st.markdown('<div class="css-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 240px; position: relative; padding-bottom: 2.5rem; margin-bottom: 0;">', unsafe_allow_html=True)
+        st.markdown('<h3 style="text-align: center; margin-bottom: 0.5rem; font-size: 1rem; color: white;">💸 Cost of Inaction</h3>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size: 2.4rem; font-weight: 700; color: #667eea; margin: 0.5rem 0; text-align: center;">${lost_revenue:,.0f}</div>', unsafe_allow_html=True)
+        st.markdown('<p style="text-align: center; margin-top: 0.5rem; color: white; font-size: 0.85rem;">Revenue you leave on the table <span style="color: #667eea; font-weight: bold;">annually</span></p>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+    
+    with grid_row1_col3:
+        st.markdown('<div class="css-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 240px; position: relative; padding-bottom: 2.5rem; margin-bottom: 0;">', unsafe_allow_html=True)
+        fold_height = 800
+        below_fold = max(0, page_height - fold_height)
+        below_fold_percent = (below_fold / page_height * 100) if page_height > 0 else 0
+        st.markdown('<h3 style="text-align: center; margin-bottom: 0.5rem; font-size: 1rem;">📉 The Scroll of Death</h3>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size: 2.4rem; font-weight: 700; color: #667eea; margin: 0.5rem 0; text-align: center;">{page_height:,}px</div>', unsafe_allow_html=True)
+        
+        scroll_html = f"""
+        <div style="position: relative; width: 100%; height: 200px; border: 2px solid #333; border-radius: 8px; margin: 1rem 0;">
+            <div style="position: absolute; top: 0; left: 0; width: 100%; height: {min(100, (fold_height / page_height * 100))}%; background: linear-gradient(180deg, #00ff00 0%, #00cc00 100%); border-radius: 8px 8px 0 0;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 0.9rem;">Above Fold ({fold_height}px)</div>
+            </div>
+            <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: {max(0, (below_fold / page_height * 100))}%; background: linear-gradient(180deg, #ff0000 0%, #cc0000 100%); border-radius: 0 0 8px 8px;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 0.9rem;">Below Fold ({below_fold_percent:.0f}%)</div>
+            </div>
+            <div style="position: absolute; top: {min(100, (fold_height / page_height * 100))}%; left: 0; width: 100%; height: 2px; background: yellow; z-index: 10;"></div>
+        </div>
+        """
+        st.markdown(scroll_html, unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center; margin-top: 0.5rem; color: white; font-size: 0.85rem;"><span style="color: #667eea; font-weight: bold;">{below_fold_percent:.0f}%</span> of users never see your bottom CTA</p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Row 2: Competitor Gap, Industry Insider, ROI (minimal spacing)
+    st.markdown('<div style="margin-top: 0.5rem;"></div>', unsafe_allow_html=True)
+    grid_row2_col1, grid_row2_col2, grid_row2_col3 = st.columns(3)
+    
+    with grid_row2_col1:
+        st.markdown('<div class="css-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 240px; position: relative; padding-bottom: 2.5rem; margin-bottom: 0;">', unsafe_allow_html=True)
+        st.markdown('<h3 style="text-align: center; margin-bottom: 0.5rem; font-size: 1rem;">🥊 Competitor Gap</h3>', unsafe_allow_html=True)
+        
+        # Calculate competitor traffic as a multiple of user traffic based on industry
+        industry_multipliers = {
+            "SaaS": 2.5,
+            "Agency": 3.0,
+            "E-commerce": 2.0
+        }
+        multiplier = industry_multipliers.get(industry, 2.5)
+        competitor_traffic = int(traffic * multiplier)
+        
+        # Ensure minimum competitor traffic for visual clarity
+        if competitor_traffic < 1000:
+            competitor_traffic = 1000
+        
+        chart_data = pd.DataFrame({
+            'Source': ['You', 'Top Competitor'],
+            'Monthly Visits': [traffic, competitor_traffic]
+        })
+        
+        max_visits = max(traffic, competitor_traffic)
+        y_max = int(max_visits * 1.40)  # 40% headroom
+        
+        fig = px.bar(chart_data, x='Source', y='Monthly Visits',
+                     color='Source',
+                     color_discrete_map={'You': '#888888', 'Top Competitor': '#ff0000'},
+                     text='Monthly Visits',
+                     labels={'Monthly Visits': '', 'Source': ''},
+                     barmode='group')
+        fig.update_traces(
+            texttemplate='%{text:,}', 
+            textposition='outside',
+            width=0.5  # Reduce bar width to 50%
+        )
+        fig.update_layout(
+            showlegend=False,
+            height=180,
+            yaxis=dict(range=[0, y_max]),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=20, r=20, t=5, b=5),  # Reduced margins
+            bargap=0.3  # Average gap between bars
+        )
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        st.markdown(f'<p style="text-align: center; margin-top: 0.5rem; color: white; font-size: 0.85rem;">Competitors get <span style="color: #667eea; font-weight: bold;">{multiplier:.1f}x</span> your traffic</p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with grid_row2_col2:
+        st.markdown('<div class="css-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 240px; position: relative; padding-bottom: 2.5rem; margin-bottom: 0;">', unsafe_allow_html=True)
+        st.markdown('<h3 style="text-align: center; margin-bottom: 0.5rem; font-size: 1rem;">🧠 Industry Insider</h3>', unsafe_allow_html=True)
+        
+        industry_facts = {
+            'SaaS': [
+                'SaaS pages with video convert 80% higher',
+                'Top SaaS sites use social proof in hero section',
+                'SaaS landing pages with clear pricing convert 2.5x better'
+            ],
+            'Agency': [
+                'Agency sites with case studies convert 3x higher',
+                'Top agencies showcase client logos above fold',
+                'Agency pages with testimonials convert 60% better'
+            ],
+            'E-commerce': [
+                'E-com sites with trust badges convert 40% more',
+                'Product pages with reviews convert 2.8x better',
+                'E-com sites with free shipping convert 30% more'
+            ]
+        }
+        
+        facts = industry_facts.get(industry, industry_facts['SaaS'])
+        random_fact = random.choice(facts)
+        
+        st.info(f"💡 {random_fact}")
+        st.markdown('<p style="text-align: center; margin-top: 0.5rem; color: white; font-size: 0.85rem;">You are missing <span style="color: #667eea; font-weight: bold;">critical elements</span> found on top sites</p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with grid_row2_col3:
+        st.markdown('<div class="css-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 240px; position: relative; padding-bottom: 2.5rem; margin-bottom: 0;">', unsafe_allow_html=True)
+        st.markdown('<h3 style="text-align: center; margin-bottom: 0.5rem; font-size: 1rem;">🚀 ROI</h3>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size: 2.4rem; font-weight: 700; color: #667eea; margin: 0.5rem 0; text-align: center;">{roi_percent:,.0f}%</div>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center; margin-top: 0.5rem; color: white; font-size: 0.85rem;">Spend <span style="color: #667eea; font-weight: bold;">${cost}</span> to recover <span style="color: #667eea; font-weight: bold;">${lost_revenue:,.0f}</span></p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Price Detector below the grid (3 columns on same line)
+    st.markdown('<div class="css-card">', unsafe_allow_html=True)
+    st.subheader("⚙️ Price Detector")
+    price_col1, price_col2, price_col3 = st.columns(3)
+    
+    with price_col1:
+        new_price = st.number_input("Detected Price ($)", min_value=1.0, max_value=10000.0, 
+                                    value=float(price), step=1.0, key="main_dashboard_price")
+    with price_col2:
+        new_traffic = st.number_input("Monthly Traffic", min_value=100, max_value=1000000, 
+                                      value=int(traffic), step=100, key="main_dashboard_traffic")
+    with price_col3:
+        new_industry = st.selectbox("Industry", ["SaaS", "Agency", "E-commerce"], 
+                                   index=["SaaS", "Agency", "E-commerce"].index(industry) if industry in ["SaaS", "Agency", "E-commerce"] else 0,
+                                   key="main_dashboard_industry")
+    
+    if new_price != price or new_traffic != traffic or new_industry != industry:
+        st.session_state.roi_price = new_price
+        st.session_state.roi_traffic = new_traffic
+        st.session_state.roi_industry = new_industry
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Middle Row: Executive Summary (Full Width)
+    st.markdown('<div class="css-card">', unsafe_allow_html=True)
+    st.subheader("🔥 Executive Summary")
+    
+    # Show roast_summary (check multiple possible fields)
+    roast_summary = (
+        roast_data.get("roastSummary") or 
+        roast_data.get("roast_summary") or 
+        roast_data.get("overview", {}).get("executiveSummary") or 
+        roast_data.get("headline_roast") or 
+        "Analysis completed"
+    )
+    if roast_summary and roast_summary.strip():
+        st.markdown(roast_summary)
+    else:
+        st.warning("Executive summary is being generated...")
+    
+    # Show roast analysis if available
+    roast_analysis = roast_data.get("overview", {}).get("roastAnalysis")
+    if roast_analysis and roast_analysis.strip():
+        st.markdown(f'**Analysis:**\n\n{roast_analysis}')
+    
+    # Show summary bullets
+    summary_bullets = roast_data.get("summary_bullets", [])
+    if summary_bullets:
+        st.markdown("**Key Findings:**")
+        for bullet in summary_bullets[:5]:
+            if "✅" in bullet:
+                st.success(bullet)
+            elif "❌" in bullet:
+                st.error(bullet)
+            else:
+                st.info(bullet)
+    
+    # Show heatmap of ONLY the first screenshot (Hero section)
+    st.markdown("**Visual Saliency - First Impression**")
+    if "captured_images" in st.session_state and st.session_state.captured_images:
+        try:
+            hero_image = st.session_state.captured_images[0]
+            hero_heatmap = generate_heatmap(hero_image)
+            
+            # Save heatmap to temp directory for PDF (use tempfile for cloud compatibility)
+            temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
+            hero_heatmap.save(heatmap_path)
+            st.session_state.heatmap_path = heatmap_path
+            
+            # Create stitched heatmap for PDF (if multiple images)
+            if len(st.session_state.captured_images) > 1:
+                try:
+                    heatmap_images = [generate_heatmap(img) for img in st.session_state.captured_images[:3]]
+                    stitched_heatmap = stitch_images(heatmap_images, max_images=3)
+                    if stitched_heatmap:
+                        stitched_heatmap_path = os.path.join(temp_dir, f"stitched_heatmap_{int(time.time())}.png")
+                        stitched_heatmap.save(stitched_heatmap_path)
+                        st.session_state.stitched_heatmap_path = stitched_heatmap_path
+                except Exception as stitch_error:
+                    safe_print(f"[WARNING] Stitched heatmap failed: {safe_error_message(str(stitch_error))}")
+                    st.session_state.stitched_heatmap_path = heatmap_path  # Fallback to single heatmap
+            else:
+                st.session_state.stitched_heatmap_path = heatmap_path
+            
+            st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+        except Exception as e:
+            safe_print(f"[ERROR] Heatmap generation failed: {safe_error_message(str(e))}")
+            st.warning("Heatmap generation failed. Showing original screenshot.")
+            st.image(hero_image, caption="Hero Section (Heatmap unavailable)", use_container_width=True)
+    elif "uploaded_files" in st.session_state and st.session_state.uploaded_files:
+        try:
+            first_file = st.session_state.uploaded_files[0]
+            hero_image = Image.open(first_file)
+            hero_heatmap = generate_heatmap(hero_image)
+            
+            # Save heatmap for PDF (use tempfile for cloud compatibility)
+            temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            heatmap_path = os.path.join(temp_dir, f"heatmap_{int(time.time())}.png")
+            hero_heatmap.save(heatmap_path)
+            st.session_state.heatmap_path = heatmap_path
+            st.session_state.stitched_heatmap_path = heatmap_path
+            
+            st.image(hero_heatmap, caption="Hero Section Heatmap", use_container_width=True)
+        except Exception as e:
+            safe_print(f"[ERROR] Heatmap generation failed: {safe_error_message(str(e))}")
+            st.warning("Heatmap generation failed. Showing original screenshot.")
+            st.image(hero_image, caption="Hero Section (Heatmap unavailable)", use_container_width=True)
+    else:
+        st.info("No screenshot available")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
