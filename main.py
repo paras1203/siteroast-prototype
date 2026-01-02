@@ -2572,7 +2572,7 @@ class PDFReport(FPDF):
         self.set_font('Arial', 'B', 10)
         self.set_text_color(150, 150, 150)
         self.set_xy(15, 15)
-        self.cell(0, 10, 'SiteRoast Conversion Audit Report', 0, 0, 'L')
+        self.cell(0, 10, clean_text('SiteRoast Conversion Audit Report'), 0, 0, 'L')
         self.set_text_color(0, 0, 0)  # Reset
         self.ln(15)
     
@@ -2581,7 +2581,7 @@ class PDFReport(FPDF):
         self.set_y(-20)
         self.set_font('Arial', 'I', 9)  # Footer uses Arial (text is cleaned)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+        self.cell(0, 10, clean_text(f'Page {self.page_no()}'), 0, 0, 'C')
     
     def add_cover_page(self, metadata, score):
         """Cover page with proper spacing and breathing room - vertically centered"""
@@ -2594,16 +2594,16 @@ class PDFReport(FPDF):
         # Title
         self.set_font("Helvetica", "B", 28)
         self.set_text_color(31, 33, 33)
-        self.cell(0, 15, "SiteRoast Conversion Audit Report", ln=True, align="C")
+        self.cell(0, 15, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
         self.ln(10)
         
         # Client Info
         self.set_font("Helvetica", "", 14)
         self.set_text_color(98, 108, 113)
-        scanned_url = clean_text_for_pdf(str(metadata.get('scannedUrl', 'N/A')))
-        scanned_at = clean_text_for_pdf(str(metadata.get('scannedAt', 'N/A')))
-        self.cell(0, 8, f"Client: {scanned_url}", ln=True, align="C")
-        self.cell(0, 8, f"Generated: {scanned_at}", ln=True, align="C")
+        scanned_url = clean_text(str(metadata.get('scannedUrl', 'N/A')))
+        scanned_at = clean_text(str(metadata.get('scannedAt', 'N/A')))
+        self.cell(0, 8, clean_text(f"Client: {scanned_url}"), ln=True, align="C")
+        self.cell(0, 8, clean_text(f"Generated: {scanned_at}"), ln=True, align="C")
         
         # Reset flag for next pages
         self.is_cover_page = False
@@ -2615,19 +2615,19 @@ class PDFReport(FPDF):
         # Header
         self.set_font("Helvetica", "B", 16)
         self.set_text_color(31, 33, 33)
-        self.cell(0, 10, "Executive Summary", ln=True)
+        self.cell(0, 10, clean_text("Executive Summary"), ln=True)
         self.ln(5)
         
         # Score Badge
         self.set_fill_color(240, 240, 240)
         self.set_font("Helvetica", "B", 14)
-        score_text = clean_text_for_pdf(f"  Site Score: {overall_score}/100  ")
+        score_text = clean_text(f"  Site Score: {overall_score}/100  ")
         self.cell(0, 12, score_text, ln=True, fill=True)
         self.ln(10)
         
         # Content (Handle Blank Data) - Split text by \n to create paragraphs
         summary_text = roast_data.get('analysis', '') or roast_data.get('broadRoast', '') or roast_data.get('roastAnalysis', '') or roast_data.get('executiveSummary', 'Analysis pending...')
-        cleaned_text = clean_text_for_pdf(str(summary_text))
+        cleaned_text = clean_text(str(summary_text))
         
         # Split by newlines to create paragraphs
         paragraphs = cleaned_text.split('\n')
@@ -2636,7 +2636,7 @@ class PDFReport(FPDF):
         for para in paragraphs:
             para = para.strip()
             if para:
-                self.multi_cell(0, 6, para)
+                self.multi_cell(0, 6, clean_text(para))
                 self.ln(3)  # Space between paragraphs
         
         self.ln(10)
@@ -2679,7 +2679,7 @@ class PDFReport(FPDF):
         # Draw matrix title
         self.set_font("Helvetica", "B", 12)
         self.set_text_color(31, 33, 33)
-        self.cell(0, 8, "Priority Matrix: Where to Start", ln=True)
+        self.cell(0, 8, clean_text("Priority Matrix: Where to Start"), ln=True)
         self.ln(3)
         
         # Matrix dimensions
@@ -2698,7 +2698,7 @@ class PDFReport(FPDF):
         for i, status_label in enumerate(status_labels_display):
             self.set_xy(x_pos + (i * cell_width), start_y)
             self.set_fill_color(240, 240, 240)
-            self.cell(cell_width, cell_height, clean_text_for_pdf(status_label), border=1, fill=True, align='C')
+            self.cell(cell_width, cell_height, clean_text(status_label), border=1, fill=True, align='C')
         
         # Draw matrix rows (Impact levels)
         impact_labels = ['High', 'Medium', 'Low']
@@ -2711,7 +2711,7 @@ class PDFReport(FPDF):
             self.set_xy(start_x, row_y)
             self.set_fill_color(245, 245, 245)
             self.set_font("Helvetica", "B", 9)
-            self.cell(cell_width, cell_height, clean_text_for_pdf(impact_labels[impact_row]), border=1, fill=True, align='C')
+            self.cell(cell_width, cell_height, clean_text(impact_labels[impact_row]), border=1, fill=True, align='C')
             
             # Status cells (counts) - iterate through status_levels in same order
             self.set_font("Helvetica", "", 9)
@@ -2729,7 +2729,7 @@ class PDFReport(FPDF):
                 
                 self.set_xy(x_pos + (i * cell_width), row_y)
                 count_text = str(count) if count > 0 else '-'
-                self.cell(cell_width, cell_height, clean_text_for_pdf(count_text), border=1, fill=True, align='C')
+                self.cell(cell_width, cell_height, clean_text(count_text), border=1, fill=True, align='C')
         
         # Move cursor below matrix
         self.set_y(start_y + (4 * cell_height))
@@ -2776,7 +2776,7 @@ class PDFReport(FPDF):
             self.set_draw_color(200, 200, 200)
             
             # Format: "Label: Count"
-            cell_text = clean_text_for_pdf(f"{label}: {count}")
+            cell_text = clean_text(f"{label}: {count}")
             self.cell(col_width, table_height, cell_text, border=1, fill=True, align='C')
         
         # Move cursor below table
@@ -2787,7 +2787,7 @@ class PDFReport(FPDF):
         """Visual analysis section with proper image placement - Page 3 - Centered Heatmap"""
         self.add_page()
         
-        # Root Cause Analysis: Multiple path resolution strategies
+        # Root Cause Analysis: Multiple path resolution strategies (cloud-compatible)
         verified_path = None
         
         if heatmap_path:
@@ -2795,8 +2795,9 @@ class PDFReport(FPDF):
             try:
                 if os.path.exists(heatmap_path):
                     verified_path = heatmap_path
-            except:
-                pass
+                    safe_print(f"[PDF] Found heatmap at: {heatmap_path}")
+            except Exception as e:
+                safe_print(f"[PDF] Strategy 1 failed: {safe_error_message(str(e))}")
             
             # Strategy 2: Try converting to absolute path
             if not verified_path:
@@ -2804,31 +2805,62 @@ class PDFReport(FPDF):
                     abs_path = os.path.abspath(heatmap_path)
                     if os.path.exists(abs_path):
                         verified_path = abs_path
-                except:
-                    pass
+                        safe_print(f"[PDF] Found heatmap at: {abs_path}")
+                except Exception as e:
+                    safe_print(f"[PDF] Strategy 2 failed: {safe_error_message(str(e))}")
             
-            # Strategy 3: Try joining with current working directory if relative
+            # Strategy 3: Try joining with tempfile.gettempdir() (cloud-compatible)
+            if not verified_path:
+                try:
+                    temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
+                    temp_path = os.path.join(temp_dir, os.path.basename(heatmap_path))
+                    if os.path.exists(temp_path):
+                        verified_path = temp_path
+                        safe_print(f"[PDF] Found heatmap at: {temp_path}")
+                except Exception as e:
+                    safe_print(f"[PDF] Strategy 3 failed: {safe_error_message(str(e))}")
+            
+            # Strategy 4: Try joining with current working directory if relative
             if not verified_path:
                 try:
                     cwd_path = os.path.join(os.getcwd(), heatmap_path)
                     if os.path.exists(cwd_path):
                         verified_path = cwd_path
-                except:
-                    pass
+                        safe_print(f"[PDF] Found heatmap at: {cwd_path}")
+                except Exception as e:
+                    safe_print(f"[PDF] Strategy 4 failed: {safe_error_message(str(e))}")
             
-            # Strategy 4: Try normalizing path (handles forward/backward slashes)
+            # Strategy 5: Try normalizing path (handles forward/backward slashes)
             if not verified_path:
                 try:
                     norm_path = os.path.normpath(heatmap_path)
                     if os.path.exists(norm_path):
                         verified_path = norm_path
+                        safe_print(f"[PDF] Found heatmap at: {norm_path}")
                     else:
                         # Try with absolute
                         abs_norm = os.path.abspath(norm_path)
                         if os.path.exists(abs_norm):
                             verified_path = abs_norm
-                except:
-                    pass
+                            safe_print(f"[PDF] Found heatmap at: {abs_norm}")
+                except Exception as e:
+                    safe_print(f"[PDF] Strategy 5 failed: {safe_error_message(str(e))}")
+            
+            # Strategy 6: Try searching in tempfile directory by filename only
+            if not verified_path:
+                try:
+                    temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
+                    if os.path.exists(temp_dir):
+                        filename = os.path.basename(heatmap_path)
+                        for file in os.listdir(temp_dir):
+                            if file == filename or file.endswith('.png'):
+                                potential_path = os.path.join(temp_dir, file)
+                                if os.path.exists(potential_path):
+                                    verified_path = potential_path
+                                    safe_print(f"[PDF] Found heatmap by filename search: {potential_path}")
+                                    break
+                except Exception as e:
+                    safe_print(f"[PDF] Strategy 6 failed: {safe_error_message(str(e))}")
         
         if verified_path:
             # Center Image Logic
@@ -2843,7 +2875,7 @@ class PDFReport(FPDF):
             self.set_font("Helvetica", "B", 14)
             self.set_text_color(31, 33, 33)
             title_y = self.get_y()
-            self.cell(0, 10, "Visual Analysis (Heatmap)", ln=True, align="C")
+            self.cell(0, 10, clean_text("Visual Analysis (Heatmap)"), ln=True, align="C")
             
             # Calculate centered X position
             x_pos = (page_width - img_w) / 2
@@ -2878,19 +2910,19 @@ class PDFReport(FPDF):
             self.set_y(130)
             self.set_font("Helvetica", "I", 12)
             self.set_text_color(128, 128, 128)
-            self.cell(0, 10, "[Heatmap Not Available]", ln=True, align="C")
+            self.cell(0, 10, clean_text("[Heatmap Not Available]"), ln=True, align="C")
             
             # Debug info (only in development, can be removed in production)
             if heatmap_path:
                 self.set_font("Helvetica", "", 8)
                 debug_text = f"Path attempted: {str(heatmap_path)[:50]}"
-                self.cell(0, 6, clean_text_for_pdf(debug_text), ln=True, align="C")
+                self.cell(0, 6, clean_text(debug_text), ln=True, align="C")
     
     def add_quick_wins(self, quick_wins):
         """Quick wins section with card-style formatting"""
         self.add_page()
         self.set_font("Helvetica", "B", 14)
-        self.cell(0, 10, "Top 3 Quick Wins", ln=True)
+        self.cell(0, 10, clean_text("Top 3 Quick Wins"), ln=True)
         self.ln(5)
         
         for idx, win in enumerate(quick_wins[:3], 1):
@@ -2899,14 +2931,14 @@ class PDFReport(FPDF):
             self.set_font("Helvetica", "B", 11)
             
             title = win.get('elementName', win.get('title', 'Issue'))
-            cleaned_title = clean_text_for_pdf(str(title))
-            header_text = clean_text_for_pdf(f" #{idx}: {cleaned_title}")
+            cleaned_title = clean_text(str(title))
+            header_text = clean_text(f" #{idx}: {cleaned_title}")
             self.cell(0, 10, header_text, ln=True, border=1, fill=True)
             
             self.set_font("Helvetica", "", 10)
             fix_text = win.get('fix', {}).get('quickFix', 'N/A') if isinstance(win.get('fix'), dict) else str(win.get('fix', 'N/A'))
-            cleaned_fix = clean_text_for_pdf(str(fix_text))
-            fix_label_text = clean_text_for_pdf(f"Fix: {cleaned_fix}")
+            cleaned_fix = clean_text(str(fix_text))
+            fix_label_text = clean_text(f"Fix: {cleaned_fix}")
             self.multi_cell(0, 8, fix_label_text, border='LRB')
             
             self.ln(5)
@@ -2930,7 +2962,7 @@ class PDFReport(FPDF):
         self.set_font("Helvetica", "B", 12)
         
         # Header height (element name + badge)
-        element_name_clean = clean_text_for_pdf(element_name)
+        element_name_clean = clean_text(element_name)
         name_width = self.get_string_width(element_name_clean)
         header_height = 10  # Base line height
         # If name is too wide, it will wrap to next line
@@ -2942,7 +2974,7 @@ class PDFReport(FPDF):
         rationale_height = 0
         if rationale_text:
             self.set_font("Helvetica", "I", 10)
-            rationale_clean = clean_text_for_pdf(str(rationale_text))
+            rationale_clean = clean_text(str(rationale_text))
             # Estimate lines: approximate average char width (Helvetica 10pt = ~2.8mm per char)
             avg_char_width = 2.8
             text_width = len(rationale_clean) * avg_char_width
@@ -2964,7 +2996,7 @@ class PDFReport(FPDF):
         fix_height = 0
         if len(fix_text) > 5:
             self.set_font("Helvetica", "", 10)
-            fix_clean = clean_text_for_pdf(str(fix_text))
+            fix_clean = clean_text(str(fix_text))
             # Estimate lines for fix text (border adds extra height)
             avg_char_width = 2.8
             text_width = len(fix_clean) * avg_char_width
@@ -2984,14 +3016,14 @@ class PDFReport(FPDF):
         self.set_font("Helvetica", "B", 12)
         self.set_text_color(31, 33, 33)
         
-        element_name = clean_text_for_pdf(element_name)
-        status = clean_text_for_pdf(str(item.get('status', 'Unknown')))
+        element_name = clean_text(element_name)
+        status = clean_text(str(item.get('status', 'Unknown')))
         impact_raw = item.get('impact', 'MI')
         
         # Humanize Impact (Fix 'MI' Labels)
         impact_map = {'HI': 'High Impact', 'MI': 'Medium Impact', 'LI': 'Low Impact'}
         readable_impact = impact_map.get(impact_raw, 'Medium Impact')
-        impact = clean_text_for_pdf(readable_impact)
+        impact = clean_text(readable_impact)
         
         # Ensure we start at left margin
         self.set_x(15)
@@ -3006,7 +3038,7 @@ class PDFReport(FPDF):
             self.cell(name_width, 8, element_name, ln=0)
         
         # Status/Impact Badge (colored) - using humanized impact
-        badge_text = clean_text_for_pdf(f" [{status} | {readable_impact}]")
+        badge_text = clean_text(f" [{status} | {readable_impact}]")
         if status in ["Failed", "Needs Improvement"]:
             self.set_text_color(*self.fail_color)
         elif status == "Excellent":
@@ -3029,7 +3061,7 @@ class PDFReport(FPDF):
         self.ln(2)
         
         # Rationale: Italics, Grey, 10pt
-        rationale = clean_text_for_pdf(str(item.get('rationale', '')))
+        rationale = clean_text(str(item.get('rationale', '')))
         if rationale:
             self.set_x(15)  # Ensure left margin
             self.set_font("Helvetica", "I", 10)
@@ -3045,13 +3077,13 @@ class PDFReport(FPDF):
             self.set_x(15)  # Ensure left margin
             self.set_font("Helvetica", "B", 10)
             self.set_text_color(*self.success_color)
-            self.cell(self.usable_width, 6, "What's Working:", ln=True)
+            self.cell(self.usable_width, 6, clean_text("What's Working:"), ln=True)
             self.set_text_color(31, 33, 33)
             self.set_font("Helvetica", "", 9)
             for w in working[:5]:  # Limit to 5 items
                 self.set_x(15)  # Ensure left margin for each bullet
-                w_text = clean_text_for_pdf(str(w))
-                bullet_text = clean_text_for_pdf(f"  - {w_text}")
+                w_text = clean_text(str(w))
+                bullet_text = clean_text(f"  - {w_text}")
                 self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
             self.ln(2)
         
@@ -3061,13 +3093,13 @@ class PDFReport(FPDF):
             self.set_x(15)  # Ensure left margin
             self.set_font("Helvetica", "B", 10)
             self.set_text_color(*self.fail_color)
-            self.cell(self.usable_width, 6, "What's Broken:", ln=True)
+            self.cell(self.usable_width, 6, clean_text("What's Broken:"), ln=True)
             self.set_text_color(31, 33, 33)
             self.set_font("Helvetica", "", 9)
             for nw in not_working[:5]:  # Limit to 5 items
                 self.set_x(15)  # Ensure left margin for each bullet
-                nw_text = clean_text_for_pdf(str(nw))
-                bullet_text = clean_text_for_pdf(f"  - {nw_text}")
+                nw_text = clean_text(str(nw))
+                bullet_text = clean_text(f"  - {nw_text}")
                 self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
             self.ln(2)
         
@@ -3083,10 +3115,10 @@ class PDFReport(FPDF):
             self.set_fill_color(249, 249, 249)
             self.set_font("Arial", "B", 10)
             self.set_text_color(31, 33, 33)
-            self.cell(0, 8, "Action Plan:", ln=True)
+            self.cell(0, 8, clean_text("Action Plan:"), ln=True)
             
             self.set_font("Arial", "", 10)
-            cleaned_fix = clean_text_for_pdf(str(fix_text))
+            cleaned_fix = clean_text(str(fix_text))
             # Use border=1 to draw the box, but ensure text is inside
             self.multi_cell(0, 6, cleaned_fix, border=1, fill=True)
             self.ln(2)
@@ -3246,13 +3278,18 @@ def calculate_radar_from_categories(categories):
     
     return radar
 
-def clean_text_for_pdf(text):
+def clean_text(text):
     """
-    Remove Unicode characters not supported by Arial/Helvetica fonts.
-    Replace common emojis with ASCII equivalents.
+    The Emoji Killer: Removes emojis and unsupported characters for FPDF.
+    Uses latin-1 encoding which is more permissive than ASCII but still safe for FPDF.
+    This prevents Unicode errors that cause blank PDFs on Streamlit Cloud.
     """
+    if not text:
+        return ""
+    
     text = str(text)
-    # Replace common emojis
+    
+    # Replace common emojis with ASCII equivalents first
     replacements = {
         "✅": "[+]",
         "❌": "[X]",
@@ -3269,15 +3306,17 @@ def clean_text_for_pdf(text):
         "📸": "",
         "🌐": "",
         "📡": "",
-        "😼": "",  # Cat emoji that was causing the error
+        "😼": "",
+        "🟢": "[OK]",
+        "🟡": "[WARN]",
+        "🟠": "[CHECK]",
+        "🔴": "[FAIL]",
+        "⚪": "[N/A]",
     }
     for emoji, replacement in replacements.items():
         text = text.replace(emoji, replacement)
     
-    # Remove any remaining non-ASCII characters
-    text = text.encode('ascii', 'ignore').decode('ascii')
-    
-    # Remove any remaining problematic characters (bullet points, special quotes, etc.)
+    # Replace problematic special characters
     problematic_chars = {
         '•': '-',
         '–': '-',
@@ -3287,11 +3326,36 @@ def clean_text_for_pdf(text):
         '"': '"',
         '"': '"',
         '…': '...',
+        '€': 'EUR',
+        '£': 'GBP',
+        '©': '(c)',
+        '®': '(R)',
+        '™': '(TM)',
     }
     for char, replacement in problematic_chars.items():
         text = text.replace(char, replacement)
     
+    # CRITICAL: Use latin-1 encoding (single-byte, more permissive than ASCII)
+    # This allows more characters while still being safe for FPDF
+    try:
+        # Encode to latin-1, ignore errors, decode back. This strips unsupported Unicode.
+        text = text.encode('latin-1', 'ignore').decode('latin-1')
+    except Exception:
+        # Fallback: if latin-1 fails, use ASCII
+        try:
+            text = text.encode('ascii', 'ignore').decode('ascii')
+        except Exception:
+            # Last resort: return empty string
+            text = ""
+    
     return text
+
+def clean_text_for_pdf(text):
+    """
+    Alias for clean_text - kept for backward compatibility.
+    All new code should use clean_text() directly.
+    """
+    return clean_text(text)
 
 def safe_error_message(error, max_length=200):
     """
@@ -3354,9 +3418,9 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
             error_pdf = PDFReport()
             error_pdf.add_page()
             error_pdf.set_font("Helvetica", "B", 16)
-            error_pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+            error_pdf.cell(0, 10, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
             error_pdf.set_font("Helvetica", "", 11)
-            error_pdf.cell(0, 10, "Error: No audit data available to generate report.", ln=True, align="C")
+            error_pdf.cell(0, 10, clean_text("Error: No audit data available to generate report."), ln=True, align="C")
             return error_pdf.output(dest='S')
         except:
             return b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 0\ntrailer\n<<\n/Size 0\n>>\nstartxref\n0\n%%EOF'
@@ -3397,101 +3461,154 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
         detailed_audit = json_data.get('detailedAudit', {})
         
         # Call new methods in order - with error handling for each section
+        safe_print(f"[PDF] Starting PDF generation with {len(json_data)} keys in json_data")
+        safe_print(f"[PDF] Heatmap path: {stitched_heatmap_path}")
+        safe_print(f"[PDF] Screenshot path: {screenshot_path}")
+        
         try:
             pdf.add_cover_page(metadata, overall_score)
+            safe_print(f"[PDF] Cover page added successfully. Page count: {pdf.page_no()}")
         except Exception as e:
             safe_print(f"[ERROR] Cover page failed: {safe_error_message(str(e))}")
             # Ensure at least one page exists
             if pdf.page_no() == 0:
                 pdf.add_page()
                 pdf.set_font("Helvetica", "B", 16)
-                pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+                pdf.cell(0, 10, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
+                pdf.set_font("Helvetica", "", 11)
+                pdf.cell(0, 10, clean_text(f"Site: {base_url or site_url or 'N/A'}"), ln=True, align="C")
+                pdf.cell(0, 10, clean_text(f"Score: {overall_score}/100"), ln=True, align="C")
+                safe_print(f"[PDF] Fallback cover page added. Page count: {pdf.page_no()}")
         
         try:
             pdf.add_roast_section(roast_data, overall_score, detailed_audit)
+            safe_print(f"[PDF] Roast section added successfully. Page count: {pdf.page_no()}")
         except Exception as e:
             safe_print(f"[ERROR] Roast section failed: {safe_error_message(str(e))}")
             # Add fallback content
-            pdf.add_page()
+            if pdf.page_no() == 0:
+                pdf.add_page()
+            else:
+                pdf.add_page()
             pdf.set_font("Helvetica", "B", 16)
-            pdf.cell(0, 10, "Executive Summary", ln=True)
+            pdf.cell(0, 10, clean_text("Executive Summary"), ln=True)
             pdf.set_font("Helvetica", "", 11)
-            summary_text = clean_text_for_pdf(str(roast_summary))
-            pdf.multi_cell(0, 6, summary_text[:500])
+            summary_text = clean_text(str(roast_summary))[:500] if roast_summary else "Analysis completed"
+            pdf.multi_cell(0, 6, summary_text)
+            pdf.ln(5)
+            pdf.cell(0, 10, clean_text(f"Overall Score: {overall_score}/100"), ln=True)
+            safe_print(f"[PDF] Fallback roast section added. Page count: {pdf.page_no()}")
         
         try:
             pdf.add_visuals_section(stitched_heatmap_path)
+            safe_print(f"[PDF] Visuals section added successfully. Page count: {pdf.page_no()}")
         except Exception as e:
             safe_print(f"[ERROR] Visuals section failed: {safe_error_message(str(e))}")
             # Add fallback page
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 14)
-            pdf.cell(0, 10, "Visual Analysis", ln=True, align="C")
+            pdf.cell(0, 10, clean_text("Visual Analysis"), ln=True, align="C")
             pdf.set_font("Helvetica", "I", 12)
-            pdf.cell(0, 10, "[Heatmap Not Available]", ln=True, align="C")
+            pdf.cell(0, 10, clean_text("[Heatmap Not Available]"), ln=True, align="C")
+            if stitched_heatmap_path:
+                pdf.set_font("Helvetica", "", 8)
+                debug_text = f"Path attempted: {str(stitched_heatmap_path)[:60]}"
+                pdf.cell(0, 6, clean_text(debug_text), ln=True, align="C")
+            safe_print(f"[PDF] Fallback visuals section added. Page count: {pdf.page_no()}")
         
         # Quick Wins section
         quick_wins = json_data.get('quick_wins', [])
         if quick_wins and len(quick_wins) > 0:
             try:
                 pdf.add_quick_wins(quick_wins)
+                safe_print(f"[PDF] Quick wins section added successfully. Page count: {pdf.page_no()}")
             except Exception as e:
                 safe_print(f"[ERROR] Quick wins section failed: {safe_error_message(str(e))}")
+                # Add fallback content
+                pdf.add_page()
+                pdf.set_font("Helvetica", "B", 14)
+                pdf.cell(0, 10, clean_text("Quick Wins"), ln=True)
+                pdf.set_font("Helvetica", "", 11)
+                for i, win in enumerate(quick_wins[:3], 1):
+                    title = win.get('title', win.get('elementName', 'Quick Win'))
+                    pdf.cell(0, 8, clean_text(f"{i}. {str(title)}"), ln=True)
+                safe_print(f"[PDF] Fallback quick wins added. Page count: {pdf.page_no()}")
     
         # --- PAGE 3: VISUAL CONTEXT (Hero Shot) ---
-        if screenshot_path and os.path.exists(screenshot_path):
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 16)
-            pdf.set_text_color(*pdf.primary_color)
-            pdf.cell(pdf.usable_width, 10, "Landing Page Screenshot", 0, 1, 'L')
-            pdf.set_text_color(0, 0, 0)
-            pdf.ln(5)
+        if screenshot_path:
+            # Try multiple path resolution strategies for cloud compatibility
+            verified_screenshot_path = None
+            if os.path.exists(screenshot_path):
+                verified_screenshot_path = screenshot_path
+            else:
+                # Try tempfile directory
+                try:
+                    temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
+                    filename = os.path.basename(screenshot_path)
+                    temp_path = os.path.join(temp_dir, filename)
+                    if os.path.exists(temp_path):
+                        verified_screenshot_path = temp_path
+                except:
+                    pass
             
-            try:
-                # Open image to get dimensions
-                from PIL import Image as PILImage
-                img = PILImage.open(screenshot_path)
-                img_width, img_height = img.size
+            if verified_screenshot_path and os.path.exists(verified_screenshot_path):
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 16)
+                pdf.set_text_color(*pdf.primary_color)
+                pdf.cell(pdf.usable_width, 10, clean_text("Landing Page Screenshot"), 0, 1, 'L')
+                pdf.set_text_color(0, 0, 0)
+                pdf.ln(5)
                 
-                # Calculate dimensions: Make it double height (or as much as fits)
-                # A4 height = 297mm, margins = 40mm total, title space ≈ 30mm
-                # Usable height ≈ 227mm
-                max_height_mm = 220  # Leave some margin
-                
-                # Calculate aspect ratio
-                aspect_ratio = img_width / img_height
-                
-                # Start with full width
-                display_width = pdf.usable_width
-                display_height = display_width / aspect_ratio
-                
-                # Double the height (or use max available)
-                target_height = min(max_height_mm, display_height * 2)
-                
-                # If target is taller, adjust width to maintain aspect ratio
-                if target_height > display_height:
-                    display_height = target_height
-                    display_width = display_height * aspect_ratio
-                    # If wider than usable width, scale down
-                    if display_width > pdf.usable_width:
-                        scale = pdf.usable_width / display_width
-                        display_width = pdf.usable_width
-                        display_height = display_height * scale
-                
-                # Center horizontally if narrower than usable width
-                x_offset = 20 + (pdf.usable_width - display_width) / 2 if display_width < pdf.usable_width else 20
-                
-                # Place image with proper spacing (y position is already set by pdf.ln(8))
-                current_y = pdf.get_y()
-                pdf.image(screenshot_path, x=x_offset, y=current_y, w=display_width)
-            except Exception as e:
-                pdf.set_font("Arial", '', 10)
-                error_msg = str(e)[:150]
-                pdf.multi_cell(pdf.usable_width, 8, f"Note: Could not load screenshot: {error_msg}", 0, 'L')
+                try:
+                    # Open image to get dimensions
+                    from PIL import Image as PILImage
+                    img = PILImage.open(verified_screenshot_path)
+                    img_width, img_height = img.size
+                    
+                    # Calculate dimensions: Make it double height (or as much as fits)
+                    # A4 height = 297mm, margins = 40mm total, title space ≈ 30mm
+                    # Usable height ≈ 227mm
+                    max_height_mm = 220  # Leave some margin
+                    
+                    # Calculate aspect ratio
+                    aspect_ratio = img_width / img_height
+                    
+                    # Start with full width
+                    display_width = pdf.usable_width
+                    display_height = display_width / aspect_ratio
+                    
+                    # Double the height (or use max available)
+                    target_height = min(max_height_mm, display_height * 2)
+                    
+                    # If target is taller, adjust width to maintain aspect ratio
+                    if target_height > display_height:
+                        display_height = target_height
+                        display_width = display_height * aspect_ratio
+                        # If wider than usable width, scale down
+                        if display_width > pdf.usable_width:
+                            scale = pdf.usable_width / display_width
+                            display_width = pdf.usable_width
+                            display_height = display_height * scale
+                    
+                    # Center horizontally if narrower than usable width
+                    x_offset = 20 + (pdf.usable_width - display_width) / 2 if display_width < pdf.usable_width else 20
+                    
+                    # Place image with proper spacing (y position is already set by pdf.ln(8))
+                    current_y = pdf.get_y()
+                    pdf.image(verified_screenshot_path, x=x_offset, y=current_y, w=display_width)
+                    safe_print(f"[PDF] Screenshot added successfully. Page count: {pdf.page_no()}")
+                except Exception as e:
+                    pdf.set_font("Arial", '', 10)
+                    error_msg = str(e)[:150]
+                    pdf.multi_cell(pdf.usable_width, 8, clean_text(f"Note: Could not load screenshot: {error_msg}"), 0, 'L')
+                    safe_print(f"[PDF] Screenshot load failed: {safe_error_message(str(e))}")
+            else:
+                safe_print(f"[PDF] Screenshot path not found: {screenshot_path}")
         
         # --- PAGE 4+: ELEMENT-BY-ELEMENT AUDIT (if available) ---
         audit_items = json_data.get('audit_items', [])
         if audit_items and len(audit_items) > 0:
+            safe_print(f"[PDF] Adding {len(audit_items)} audit items")
             # Split audit_items into pages (3-4 per page)
             items_per_page = 3
             for page_start in range(0, len(audit_items), items_per_page):
@@ -3499,86 +3616,122 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                 if page_start == 0:
                     pdf.set_font("Arial", 'B', 18)
                     pdf.set_text_color(*pdf.primary_color)
-                    pdf.cell(pdf.usable_width, 12, "Element-by-Element Audit", 0, 1, 'L')
+                    pdf.cell(pdf.usable_width, 12, clean_text("Element-by-Element Audit"), 0, 1, 'L')
                     pdf.set_text_color(0, 0, 0)
                     pdf.ln(3)
                 
                 page_items = audit_items[page_start:page_start + items_per_page]
                 for item in page_items:
-                    # Use the new professional audit_card method
-                    pdf.audit_card(item)
-                    
-                    # Add separator line between cards
-                    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
-                    pdf.ln(3)
+                    try:
+                        # Use the new professional audit_card method
+                        pdf.audit_card(item)
+                        
+                        # Add separator line between cards
+                        pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+                        pdf.ln(3)
+                    except Exception as e:
+                        safe_print(f"[PDF] Audit card failed: {safe_error_message(str(e))}")
+                        # Add fallback content for this item
+                        element_name = item.get('element', item.get('elementName', 'Element'))
+                        pdf.set_font("Arial", 'B', 12)
+                        pdf.cell(pdf.usable_width, 8, clean_text(str(element_name)), ln=True)
+                        pdf.set_font("Arial", '', 10)
+                        pdf.cell(pdf.usable_width, 6, clean_text(f"Status: {item.get('status', 'Unknown')}"), ln=True)
+                        pdf.ln(3)
+            safe_print(f"[PDF] Audit items added. Page count: {pdf.page_no()}")
         
         # --- PAGE N+: DEEP DIVES (God-Tier Schema) ---
         categories = json_data.get('categories', [])
-        for cat in categories:
-            pdf.add_page()
-            # Title
-            pdf.set_font("Arial", 'B', 16)
-            cat_name = clean_text_for_pdf(cat.get('name', 'Unknown'))[:80]
-            cat_score = cat.get('score', 0)
-            pdf.multi_cell(pdf.usable_width, 10, f"{cat_name} (Score: {cat_score}/100)", 0, 'L')
-            
-            # Verdict & Impact
-            pdf.set_font("Arial", '', 11)
-            verdict = clean_text_for_pdf(cat.get('verdict', 'Unknown'))[:40]
-            impact = clean_text_for_pdf(cat.get('impact', 'Unknown'))[:40]
-            pdf.multi_cell(pdf.usable_width, 8, f"Verdict: {verdict} | Impact: {impact}", 0, 'L')
-            pdf.ln(4)
-            
-            # What Works
-            what_works = cat.get('what_works', '')
-            if what_works:
-                pdf.set_font("Arial", 'B', 11)
-                pdf.set_text_color(0, 128, 0)  # Green
-                pdf.cell(pdf.usable_width, 8, "What Works:", 0, 1, 'L')
-                pdf.set_text_color(0, 0, 0)
-                pdf.set_font("Arial", '', 10)
-                pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_works)[:400], 0, 'L')
-                pdf.ln(3)
-            
-            # What Failed
-            what_failed = cat.get('what_failed', '')
-            if what_failed:
-                pdf.set_font("Arial", 'B', 11)
-                pdf.set_text_color(200, 0, 0)  # Red
-                pdf.cell(pdf.usable_width, 8, "What Failed:", 0, 1, 'L')
-                pdf.set_text_color(0, 0, 0)
-                pdf.set_font("Arial", '', 10)
-                pdf.multi_cell(pdf.usable_width, 6, clean_text_for_pdf(what_failed)[:400], 0, 'L')
-                pdf.ln(3)
-            
-            # Fix Steps
-            fix_steps = cat.get('fix_steps', [])
-            if fix_steps:
-                pdf.set_font("Arial", 'B', 11)
-                pdf.set_text_color(*pdf.primary_color)
-                pdf.cell(pdf.usable_width, 8, "Fix Steps:", 0, 1, 'L')
-                pdf.set_text_color(0, 0, 0)
-                pdf.set_font("Arial", '', 10)
-                for i, step in enumerate(fix_steps[:5]):  # Max 5 steps
-                    step_text = clean_text_for_pdf(step)[:300]
-                    pdf.multi_cell(pdf.usable_width, 6, f"{i+1}. {step_text}", 0, 'L')
-                    pdf.ln(2)
+        if categories:
+            safe_print(f"[PDF] Adding {len(categories)} category pages")
+            for cat in categories:
+                try:
+                    pdf.add_page()
+                    # Title
+                    pdf.set_font("Arial", 'B', 16)
+                    cat_name = clean_text(cat.get('name', 'Unknown'))[:80]
+                    cat_score = cat.get('score', 0)
+                    pdf.multi_cell(pdf.usable_width, 10, clean_text(f"{cat_name} (Score: {cat_score}/100)"), 0, 'L')
+                    
+                    # Verdict & Impact
+                    pdf.set_font("Arial", '', 11)
+                    verdict = clean_text(cat.get('verdict', 'Unknown'))[:40]
+                    impact = clean_text(cat.get('impact', 'Unknown'))[:40]
+                    pdf.multi_cell(pdf.usable_width, 8, clean_text(f"Verdict: {verdict} | Impact: {impact}"), 0, 'L')
+                    pdf.ln(4)
+                    
+                    # What Works
+                    what_works = cat.get('what_works', '')
+                    if what_works:
+                        pdf.set_font("Arial", 'B', 11)
+                        pdf.set_text_color(0, 128, 0)  # Green
+                        pdf.cell(pdf.usable_width, 8, clean_text("What Works:"), 0, 1, 'L')
+                        pdf.set_text_color(0, 0, 0)
+                        pdf.set_font("Arial", '', 10)
+                        pdf.multi_cell(pdf.usable_width, 6, clean_text(str(what_works))[:400], 0, 'L')
+                        pdf.ln(3)
+                    
+                    # What Failed
+                    what_failed = cat.get('what_failed', '')
+                    if what_failed:
+                        pdf.set_font("Arial", 'B', 11)
+                        pdf.set_text_color(200, 0, 0)  # Red
+                        pdf.cell(pdf.usable_width, 8, clean_text("What Failed:"), 0, 1, 'L')
+                        pdf.set_text_color(0, 0, 0)
+                        pdf.set_font("Arial", '', 10)
+                        pdf.multi_cell(pdf.usable_width, 6, clean_text(str(what_failed))[:400], 0, 'L')
+                        pdf.ln(3)
+                    
+                    # Fix Steps
+                    fix_steps = cat.get('fix_steps', [])
+                    if fix_steps:
+                        pdf.set_font("Arial", 'B', 11)
+                        pdf.set_text_color(*pdf.primary_color)
+                        pdf.cell(pdf.usable_width, 8, clean_text("Fix Steps:"), 0, 1, 'L')
+                        pdf.set_text_color(0, 0, 0)
+                        pdf.set_font("Arial", '', 10)
+                        for i, step in enumerate(fix_steps[:5]):  # Max 5 steps
+                            step_text = clean_text(str(step))[:300]
+                            pdf.multi_cell(pdf.usable_width, 6, clean_text(f"{i+1}. {step_text}"), 0, 'L')
+                            pdf.ln(2)
+                except Exception as e:
+                    safe_print(f"[PDF] Category page failed: {safe_error_message(str(e))}")
+                    # Add minimal fallback
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 16)
+                    cat_name = clean_text(cat.get('name', 'Category'))[:80]
+                    pdf.cell(pdf.usable_width, 10, clean_text(f"{cat_name}"), 0, 1, 'L')
+            safe_print(f"[PDF] Categories added. Page count: {pdf.page_no()}")
         
-        # Ensure PDF has at least one page with content
-        if pdf.page_no() == 0:
+        # CRITICAL: Ensure PDF has at least one page with content BEFORE output
+        page_count = pdf.page_no()
+        safe_print(f"[PDF] Page count before output: {page_count}")
+        
+        if page_count == 0:
+            safe_print("[PDF] WARNING: No pages found, adding fallback page")
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 16)
-            pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+            pdf.cell(0, 10, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
             pdf.set_font("Helvetica", "", 11)
-            pdf.cell(0, 10, "Report generated successfully", ln=True, align="C")
+            pdf.cell(0, 10, clean_text("Report generated successfully"), ln=True, align="C")
+            pdf.cell(0, 10, clean_text(f"Site: {base_url or site_url or 'N/A'}"), ln=True, align="C")
+            pdf.cell(0, 10, clean_text(f"Score: {overall_score}/100"), ln=True, align="C")
+        
+        # Verify we have content by checking page count again
+        final_page_count = pdf.page_no()
+        safe_print(f"[PDF] Final page count: {final_page_count}")
+        
+        if final_page_count == 0:
+            raise ValueError("PDF has zero pages - cannot generate empty PDF")
         
         # pdf.output(dest='S') returns bytes/bytearray directly
         # Handle encoding errors gracefully (Windows charmap issue)
         try:
             pdf_bytes = pdf.output(dest='S')
+            safe_print(f"[PDF] Output size: {len(pdf_bytes) if pdf_bytes else 0} bytes")
             # Verify PDF is not empty
             if not pdf_bytes or len(pdf_bytes) < 100:
-                raise ValueError("PDF output is too small, likely empty")
+                raise ValueError(f"PDF output is too small ({len(pdf_bytes) if pdf_bytes else 0} bytes), likely empty")
         except (UnicodeEncodeError, UnicodeDecodeError, ValueError) as e:
             # If encoding fails, use BytesIO buffer which handles encoding better
             try:
@@ -3596,9 +3749,9 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
                     fallback_pdf = PDFReport()
                     fallback_pdf.add_page()
                     fallback_pdf.set_font("Helvetica", "B", 16)
-                    fallback_pdf.cell(0, 10, "SiteRoast Conversion Audit Report", ln=True, align="C")
+                    fallback_pdf.cell(0, 10, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
                     fallback_pdf.set_font("Helvetica", "", 11)
-                    error_msg = clean_text_for_pdf(f"PDF generation encountered an error. Please try again.")
+                    error_msg = clean_text("PDF generation encountered an error. Please try again.")
                     fallback_pdf.multi_cell(0, 6, error_msg)
                     pdf_bytes = fallback_pdf.output(dest='S')
                 except:
