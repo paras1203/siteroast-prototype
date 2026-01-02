@@ -4764,74 +4764,29 @@ def render_main_audit_dashboard(roast_data):
             else:
                 st.success("Verdict: EXCELLENT")
         with col_top3:
-            # Report Buttons (PDF + HTML)
+            # HTML Report Download Button (PDF hidden due to blank PDF issue)
             try:
-                screenshot_path = None
-                temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
-                os.makedirs(temp_dir, exist_ok=True)
-                
-                if "uploaded_files" in st.session_state and st.session_state.uploaded_files:
-                    first_file = st.session_state.uploaded_files[0]
-                    screenshot_path = os.path.join(temp_dir, f"screenshot_{int(time.time())}.png")
-                    Image.open(first_file).save(screenshot_path)
-                elif "captured_images" in st.session_state and st.session_state.captured_images:
-                    first_img = st.session_state.captured_images[0]
-                    screenshot_path = os.path.join(temp_dir, f"screenshot_{int(time.time())}.png")
-                    first_img.save(screenshot_path)
-                
-                radar_chart_path = st.session_state.get("radar_chart_path", None)
-                site_url = st.session_state.get("audit_url", st.session_state.get("site_url", None))
-                stitched_heatmap_path = st.session_state.get("stitched_heatmap_path", st.session_state.get("heatmap_path", None))
-                
                 # Generate HTML Report
                 overall_score = roast_data.get("overall_score", 50)
-                html_report = generate_html_report(roast_data, overall_score, screenshot_path, radar_chart_path, stitched_heatmap_path, site_url)
+                site_url = st.session_state.get("audit_url", st.session_state.get("site_url", None))
+                html_report = generate_html_report(roast_data, overall_score, site_url=site_url)
                 
                 # Validate HTML report was generated
                 if not html_report or len(html_report) < 100:
                     st.error("⚠️ HTML report generation failed. Report may be incomplete.")
                     html_report = "<html><body><h1>Report Generation Error</h1><p>The HTML report could not be generated.</p></body></html>"
                 
-                b64_html = base64.b64encode(html_report.encode('utf-8')).decode('utf-8')
-                
-                # Display Buttons Side-by-Side
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # PDF Download Button
-                    try:
-                        pdf_bytes = generate_pdf_report(roast_data, screenshot_path, site_url, radar_chart_path, stitched_heatmap_path)
-                        st.download_button(
-                            label="📥 Download PDF",
-                            data=pdf_bytes,
-                            file_name=f"siteroast_audit_{int(time.time())}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
-                    except Exception as pdf_error:
-                        error_msg = safe_error_message(pdf_error)
-                        st.error(f"PDF Error: {error_msg[:50]}")
-                
-                with col2:
-                    # Download HTML button (same size as PDF)
-                    st.download_button(
-                        label="📥 Download HTML",
-                        data=html_report.encode('utf-8'),
-                        file_name=f"siteroast_audit_{int(time.time())}.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
-                
-                # Cleanup temp files
-                for temp_path in [screenshot_path, radar_chart_path]:
-                    if temp_path and os.path.exists(temp_path):
-                        try:
-                            os.remove(temp_path)
-                        except:
-                            pass
+                # Download HTML Report Button
+                st.download_button(
+                    label="📥 Download the Report",
+                    data=html_report.encode('utf-8'),
+                    file_name=f"siteroast_audit_{int(time.time())}.html",
+                    mime="text/html",
+                    use_container_width=True
+                )
             except Exception as e:
                 error_msg = safe_error_message(e)
-                st.error(f"Error generating reports: {error_msg}")
+                st.error(f"Error generating report: {error_msg}")
         st.markdown('</div>', unsafe_allow_html=True)
     
     # 3x2 Grid: Shocker Metrics (above Performance Radar and Executive Summary)
