@@ -20,6 +20,7 @@ import sys
 import pathlib
 import subprocess
 import base64
+from db_firebase import save_scan
 
 # CLOUD FIX: Install Playwright browsers automatically on startup
 try:
@@ -2527,86 +2528,80 @@ def generate_heatmap(image_pil):
         return image_pil.convert('RGB') if image_pil.mode != 'RGB' else image_pil
 
 class PDFReport(FPDF):
-    """
-    Custom PDF Report with branded header/footer and proper text wrapping.
-    Uses DejaVuSans font for Unicode/emoji support, falls back to Helvetica if not available.
-    """
+    """Robust PDF Report class - Cloud-safe design using Helvetica only"""
     def __init__(self):
         super().__init__()
-        # Set margins: 15mm all sides (standard)
         self.set_margins(15, 15, 15)
-        # Set auto page break with bottom margin
         self.set_auto_page_break(auto=True, margin=15)
+        self.is_cover_page = False
         # Calculate usable width: A4 width (210mm) - margins (30mm total) = 180mm
         self.usable_width = 180
-        # Brand colors
-        self.primary_color = (103, 58, 255)  # Purple/Indigo
-        self.success_color = (0, 150, 0)      # Green
-        self.fail_color = (200, 0, 0)         # Red
-        self.warn_color = (255, 140, 0)       # Orange
-        
-        # Flag to control header visibility on cover page
-        self.is_cover_page = False
-        
-        # Use Helvetica only - core PostScript font guaranteed on Linux
-        self.font_name = 'Helvetica'  # Default font
     
     def header(self):
         """Branded header on every page"""
-        # Skip header on cover page
-        if self.is_cover_page:
+        if getattr(self, 'is_cover_page', False):
             return
-        
-        # DISABLED: Border rectangle (may cause layering issues)
-        # self.set_line_width(0.5)
-        # self.set_draw_color(*self.primary_color)
-        # self.rect(10, 10, 190, 277)  # A4 border
-        
-        # Brand text (use Helvetica, text is already cleaned)
         self.set_font('Helvetica', 'B', 10)
-        self.set_text_color(150, 150, 150)
-        self.set_xy(15, 15)
-        self.cell(0, 10, clean_text('SiteRoast Conversion Audit Report'), 0, 0, 'L')
-        self.set_text_color(0, 0, 0)  # Reset
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, clean_text('SiteRoast - Conversion Audit Report'), 0, 0, 'L')
         self.ln(15)
     
     def footer(self):
         """Branded footer with page number"""
-        self.set_y(-20)
-        self.set_font('Helvetica', 'I', 9)  # Footer uses Helvetica (text is cleaned)
+        self.set_y(-15)
+        self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, clean_text(f'Page {self.page_no()}'), 0, 0, 'C')
     
+    def chapter_title(self, label):
+        """Helper method for chapter titles"""
+        self.set_font('Helvetica', 'B', 16)
+        self.set_text_color(33, 33, 33)
+        self.cell(0, 10, clean_text(label), 0, 1, 'L')
+        self.ln(5)
+    
+    def draw_badge(self, text, status):
+        """Draw colored badge based on status"""
+        # Color Coding
+        if status in ['Excellent', 'Good']:
+            self.set_fill_color(220, 255, 220)  # Green
+            self.set_text_color(0, 100, 0)
+        elif status == 'Satisfactory':
+            self.set_fill_color(255, 245, 220)  # Orange
+            self.set_text_color(150, 100, 0)
+        else:
+            self.set_fill_color(255, 220, 220)  # Red
+            self.set_text_color(150, 0, 0)
+        
+        self.set_font('Helvetica', 'B', 9)
+        w = self.get_string_width(clean_text(text)) + 6
+        self.cell(w, 6, clean_text(text), 0, 0, 'C', fill=True)
+        self.set_fill_color(255, 255, 255)  # Reset
+        self.set_text_color(0, 0, 0)  # Reset
+    
     def add_cover_page(self, metadata, score):
-        """Cover page with proper spacing and breathing room - vertically centered"""
-        # Force black text at start - MUST BE FIRST LINE
-        self.set_text_color(0, 0, 0)  # Force Black
-        
+        """Cover page - vertically centered"""
+        self.set_text_color(0, 0, 0)
         self.add_page()
-        self.is_cover_page = True  # Turn off header
+        self.is_cover_page = True
         
-        # DEBUG MODE: CORE FONTS ACTIVE
-        self.set_font("Helvetica", "", 10)
-        self.cell(0, 10, clean_text("DEBUG MODE: CORE FONTS ACTIVE"), ln=True)
-        
-        # Vertical Center Calculation (Page Height ~297mm)
+        # Vertical Center
         self.set_y(110)
         
         # Title
         self.set_font("Helvetica", "B", 28)
-        self.set_text_color(0, 0, 0)  # Force Black
+        self.set_text_color(0, 0, 0)
         self.cell(0, 15, clean_text("SiteRoast Conversion Audit Report"), ln=True, align="C")
         self.ln(10)
         
         # Client Info
         self.set_font("Helvetica", "", 14)
-        self.set_text_color(0, 0, 0)  # Force Black
+        self.set_text_color(0, 0, 0)
         scanned_url = clean_text(str(metadata.get('scannedUrl', 'N/A')))
         scanned_at = clean_text(str(metadata.get('scannedAt', 'N/A')))
         self.cell(0, 8, clean_text(f"Client: {scanned_url}"), ln=True, align="C")
         self.cell(0, 8, clean_text(f"Generated: {scanned_at}"), ln=True, align="C")
         
-        # Reset flag for next pages
         self.is_cover_page = False
     
     def add_roast_section(self, roast_data, overall_score, detailed_audit=None):
@@ -2630,16 +2625,17 @@ class PDFReport(FPDF):
         self.cell(0, 12, score_text, ln=True, fill=False)
         self.ln(10)
         
-        # Content - Include both Summary and Analysis
-        summary_text = roast_data.get('executiveSummary', '') or roast_data.get('hook', '') or roast_data.get('broadRoast', '')
+        # Content - MUST MATCH HTML REPORT EXACTLY
+        # HTML uses: data.get('roast_summary') or data.get('headline_roast') or data.get('overview', {}).get('executiveSummary', 'No summary available.')
+        summary_text = roast_data.get('roast_summary') or roast_data.get('headline_roast') or roast_data.get('overview', {}).get('executiveSummary', 'No summary available.')
         analysis_text = roast_data.get('roastAnalysis', '') or roast_data.get('analysis', '')
         
-        # Write Summary
-        if summary_text:
-            self.set_font("Helvetica", "B", 12)
-            self.set_text_color(0, 0, 0)
-            self.cell(0, 8, clean_text("Summary:"), ln=True)
-            self.set_font("Helvetica", "", 11)
+        # Write Summary - Always show Executive Summary section
+        self.set_font("Helvetica", "B", 12)
+        self.set_text_color(0, 0, 0)
+        self.cell(0, 8, clean_text("Summary:"), ln=True)
+        self.set_font("Helvetica", "", 11)
+        if summary_text and len(str(summary_text).strip()) > 5:
             cleaned_summary = clean_text(str(summary_text))
             summary_paragraphs = cleaned_summary.split('\n')
             for para in summary_paragraphs:
@@ -2648,10 +2644,14 @@ class PDFReport(FPDF):
                     self.set_text_color(0, 0, 0)
                     self.multi_cell(0, 6, clean_text(para))
                     self.ln(3)
-            self.ln(5)
+        else:
+            # Fallback if no summary available
+            self.set_text_color(0, 0, 0)
+            self.multi_cell(0, 6, clean_text("Executive summary analysis completed. See detailed findings below."))
+        self.ln(5)
         
         # Write Analysis - Split into multiple paragraphs (2-3 sentences each)
-        if analysis_text:
+        if analysis_text and len(str(analysis_text).strip()) > 5:
             self.set_font("Helvetica", "B", 12)
             self.set_text_color(0, 0, 0)
             self.cell(0, 8, clean_text("Analysis:"), ln=True)
@@ -2773,9 +2773,34 @@ class PDFReport(FPDF):
                 #     self.set_fill_color(250, 250, 250)  # Very light gray
                 
                 self.set_xy(x_pos + (i * cell_width), row_y)
+                
+                # Color coding - Match HTML colors
+                if impact_code == 'HI' and status == 'Failed':
+                    self.set_fill_color(255, 200, 200)  # Light red for High Impact + Failed
+                    fill = True
+                elif count > 0:
+                    # Color by status
+                    if status == 'Excellent':
+                        self.set_fill_color(220, 255, 220)  # Light green
+                    elif status == 'Good':
+                        self.set_fill_color(240, 255, 240)  # Very light green
+                    elif status == 'Satisfactory':
+                        self.set_fill_color(255, 245, 220)  # Light orange/yellow
+                    elif status == 'Needs Improvement':
+                        self.set_fill_color(255, 230, 200)  # Light orange
+                    elif status == 'Failed':
+                        self.set_fill_color(255, 220, 220)  # Light red
+                    else:
+                        self.set_fill_color(255, 255, 255)  # White
+                    fill = True
+                else:
+                    self.set_fill_color(250, 250, 250)  # Very light gray for empty
+                    fill = True
+                
                 self.set_text_color(0, 0, 0)  # Force Black
                 count_text = str(count) if count > 0 else '-'
-                self.cell(cell_width, cell_height, clean_text(count_text), border=1, fill=False, align='C')
+                self.cell(cell_width, cell_height, clean_text(count_text), border=1, fill=fill, align='C')
+                self.set_fill_color(255, 255, 255)  # Reset fill
         
         # Move cursor below matrix
         self.set_y(start_y + (4 * cell_height))
@@ -2832,15 +2857,10 @@ class PDFReport(FPDF):
         self.ln(5)
     
     def add_radar_section(self, radar_chart_path):
-        """Performance Radar section - Centered Radar Chart"""
+        """Performance Radar section - Centered Radar Chart (H & V centered)"""
         if radar_chart_path and os.path.exists(radar_chart_path):
             self.add_page()
             self.set_text_color(0, 0, 0)  # Force Black
-            
-            # Title
-            self.set_font("Helvetica", "B", 16)
-            self.cell(0, 10, clean_text("Performance Radar (Priority Matrix)"), ln=True, align="C")
-            self.ln(10)
             
             try:
                 from PIL import Image as PILImage
@@ -2849,6 +2869,7 @@ class PDFReport(FPDF):
                 
                 # Calculate dimensions to fit page (centered)
                 page_width = 210  # A4 width in mm
+                page_height = 297  # A4 height in mm
                 max_width = 150  # Max width in mm
                 max_height = 150  # Max height in mm
                 
@@ -2863,10 +2884,21 @@ class PDFReport(FPDF):
                     display_height = min(max_height, 150)
                     display_width = display_height * aspect_ratio
                 
-                # Center horizontally
+                # Center both horizontally and vertically
                 x_pos = (page_width - display_width) / 2
-                y_pos = self.get_y()
+                # Vertical center: (page_height - top_margin - bottom_margin - image_height) / 2 + top_margin
+                top_margin = 30
+                bottom_margin = 20
+                available_height = page_height - top_margin - bottom_margin
+                y_pos = (available_height - display_height) / 2 + top_margin
                 
+                # Title above image (centered)
+                title_y = y_pos - 20
+                self.set_y(title_y)
+                self.set_font("Helvetica", "B", 16)
+                self.cell(0, 10, clean_text("Performance Radar"), ln=True, align="C")
+                
+                # Place image
                 self.image(radar_chart_path, x=x_pos, y=y_pos, w=display_width, h=display_height)
                 self.set_y(y_pos + display_height + 10)
             except Exception as e:
@@ -2961,24 +2993,14 @@ class PDFReport(FPDF):
                     safe_print(f"[PDF] Strategy 6 failed: {safe_error_message(str(e))}")
         
         if verified_path:
-            # Center Image Logic
-            # Page width 210mm, Height 297mm
-            img_w = 180
-            page_width = 210
+            # Center Image Logic - Both H & V centered
+            page_width = 210  # A4 width in mm
+            page_height = 297  # A4 height in mm
+            top_margin = 30
+            bottom_margin = 20
             
-            # Start at top with proper margin
-            self.set_y(30)  # Clear header margin
-            
-            # Title first
-            self.set_font("Helvetica", "B", 14)
-            self.set_text_color(0, 0, 0)  # Force Black
-            title_y = self.get_y()
-            self.cell(0, 10, clean_text("Visual Analysis (Heatmap)"), ln=True, align="C")
-            
-            # Calculate centered X position
-            x_pos = (page_width - img_w) / 2
-            
-            # Get image dimensions to calculate proper height
+            # Get image dimensions
+            img_w = 180  # Initial width
             img_h = 180  # Default fallback height
             try:
                 from PIL import Image as PILImage
@@ -2988,21 +3010,35 @@ class PDFReport(FPDF):
                 img_h = img_w * aspect_ratio
                 
                 # Ensure image doesn't exceed page height (with margins)
-                max_height = 240  # 297 - 30 (top) - 27 (bottom)
+                available_height = page_height - top_margin - bottom_margin - 30  # 30 for title
+                max_height = min(available_height, 220)
                 if img_h > max_height:
                     img_h = max_height
                     img_w = img_h / aspect_ratio
-                    x_pos = (page_width - img_w) / 2
             except Exception:
-                # Fallback if PIL fails - use default img_h = 180
+                # Fallback if PIL fails
                 pass
             
-            # Place image with proper Y positioning (after title)
-            img_y = title_y + 15
-            self.image(verified_path, x=x_pos, y=img_y, w=img_w)
+            # Center horizontally
+            x_pos = (page_width - img_w) / 2
+            
+            # Center vertically (accounting for title)
+            title_height = 15
+            available_height = page_height - top_margin - bottom_margin - title_height
+            y_pos = (available_height - img_h) / 2 + top_margin + title_height
+            
+            # Title above image (centered)
+            title_y = y_pos - 18
+            self.set_y(title_y)
+            self.set_font("Helvetica", "B", 14)
+            self.set_text_color(0, 0, 0)  # Force Black
+            self.cell(0, 10, clean_text("Visual Analysis (Heatmap)"), ln=True, align="C")
+            
+            # Place image centered
+            self.image(verified_path, x=x_pos, y=y_pos, w=img_w, h=img_h)
             
             # Move cursor below image
-            self.set_y(img_y + img_h + 10)
+            self.set_y(y_pos + img_h + 10)
         else:
             # Heatmap Not Available - centered message with debugging info
             self.set_y(130)
@@ -3048,262 +3084,198 @@ class PDFReport(FPDF):
             self.ln(5)
     
     def audit_card(self, item):
-        """
-        Professional audit card layout for individual audit items.
-        Structure: Header (elementName + Status/Impact badge) -> Rationale -> Findings (Working/Broken) -> Fix box
-        """
-        # Force black text at start
-        self.set_text_color(0, 0, 0)  # Force Black
-        
-        # Keep Together Logic: Calculate height dynamically (Smarter Page Breaks)
-        element_name = str(item.get('element', item.get('elementName', 'Element')))
-        rationale_text = str(item.get('rationale', ''))
-        working = item.get('working', item.get('workingWell', []))
-        not_working = item.get('not_working', item.get('notWorking', []))
-        fix_obj = item.get('fix', {})
-        fix_text = fix_obj.get('quickFix', '') if isinstance(fix_obj, dict) else str(fix_obj)
-        fix_text = fix_text.strip() if fix_text else ''
-        
-        # Use FPDF's get_string_width for accurate text measurement
-        line_height = 5
-        self.set_font("Helvetica", "B", 12)
-        
-        # Header height (element name + badge)
-        element_name_clean = clean_text(element_name)
-        name_width = self.get_string_width(element_name_clean)
-        header_height = 10  # Base line height
-        # If name is too wide, it will wrap to next line
-        if name_width > (self.usable_width - 80):
-            header_height += 8
-        header_height += 10  # Badge line + spacing
-        
-        # Rationale height: Calculate lines based on actual width
-        rationale_height = 0
-        if rationale_text:
-            self.set_font("Helvetica", "I", 10)
-            rationale_clean = clean_text(str(rationale_text))
-            # Estimate lines: approximate average char width (Helvetica 10pt = ~2.8mm per char)
-            avg_char_width = 2.8
-            text_width = len(rationale_clean) * avg_char_width
-            lines_rationale = max(1, int(text_width / self.usable_width) + 1)
-            rationale_height = (lines_rationale * line_height) + 3
-        
-        # Working items height (label + list items)
-        working_height = 0
-        if working:
-            # Label (6mm) + items (5mm each) + spacing
-            working_height = 6 + (len(working[:5]) * line_height) + 2
-        
-        # Not working items height
-        not_working_height = 0
-        if not_working:
-            not_working_height = 6 + (len(not_working[:5]) * line_height) + 2
-        
-        # Conversion Impact height
-        conversion_impact = item.get('conversionImpact', '')
-        conversion_impact_height = 0
-        if conversion_impact:
-            self.set_font("Helvetica", "", 9)
-            impact_clean = clean_text(str(conversion_impact))
-            avg_char_width = 2.8
-            text_width = len(impact_clean) * avg_char_width
-            lines_impact = max(1, int(text_width / self.usable_width) + 1)
-            conversion_impact_height = 8 + (lines_impact * 5) + 2  # Label + text lines + spacing
-        
-        # Fix box height
-        fix_height = 0
-        if len(fix_text) > 5:
-            self.set_font("Helvetica", "", 10)
-            fix_clean = clean_text(str(fix_text))
-            # Estimate lines for fix text
-            avg_char_width = 2.8
-            text_width = len(fix_clean) * avg_char_width
-            lines_fix = max(1, int(text_width / self.usable_width) + 1)
-            fix_height = 8 + (lines_fix * 6) + 2  # Label + text lines + spacing
-        
-        # Fix Example height
-        fix_obj = item.get('fix', {})
-        fix_example = fix_obj.get('example', '') if isinstance(fix_obj, dict) else ''
-        fix_example_height = 0
-        if fix_example and len(str(fix_example).strip()) > 5:
-            self.set_font("Helvetica", "", 9)
-            example_clean = clean_text(str(fix_example))
-            avg_char_width = 2.8
-            text_width = len(example_clean) * avg_char_width
-            lines_example = max(1, int(text_width / self.usable_width) + 1)
-            fix_example_height = 8 + (lines_example * 5) + 4  # Label + text lines + border padding
-        
-        # Expected Impact height
-        fix_expected_impact = fix_obj.get('expectedImpact', '') if isinstance(fix_obj, dict) else ''
-        expected_impact_height = 0
-        if fix_expected_impact and len(str(fix_expected_impact).strip()) > 5:
-            self.set_font("Helvetica", "", 9)
-            expected_clean = clean_text(str(fix_expected_impact))
-            avg_char_width = 2.8
-            text_width = len(expected_clean) * avg_char_width
-            lines_expected = max(1, int(text_width / self.usable_width) + 1)
-            expected_impact_height = 8 + (lines_expected * 5) + 2  # Label + text lines + spacing
-        
-        # Total required height with safety margin
-        required_height = header_height + rationale_height + working_height + not_working_height + conversion_impact_height + fix_height + fix_example_height + expected_impact_height + 5
-        
-        # Check if card will fit on current page
-        page_bottom = 275  # 297mm page height - 22mm footer margin
-        current_y = self.get_y()
-        if current_y + required_height > page_bottom:
-            self.add_page()
-        
-        # Header: ElementName (Bold, 12pt) and Status/Impact Badge on same line
-        self.set_font("Helvetica", "B", 12)
-        self.set_text_color(0, 0, 0)  # Force black text
-        
-        element_name = clean_text(element_name)
-        status = clean_text(str(item.get('status', 'Unknown')))
+        """Detailed audit card matching HTML format exactly - draws background first, then text"""
+        # Clean Inputs - MATCH HTML EXACTLY
+        name = clean_text(item.get('elementName', item.get('element', 'Observation')))
+        status = clean_text(item.get('status', 'Neutral'))
         impact_raw = item.get('impact', 'MI')
+        rationale = clean_text(item.get('rationale', ''))
         
-        # Humanize Impact (Fix 'MI' Labels)
+        # Map Impact - MATCH HTML
         impact_map = {'HI': 'High Impact', 'MI': 'Medium Impact', 'LI': 'Low Impact'}
         readable_impact = impact_map.get(impact_raw, 'Medium Impact')
-        impact = clean_text(readable_impact)
         
-        # Ensure we start at left margin
+        # Get all sections - MATCH HTML STRUCTURE
+        working_well = item.get('workingWell', item.get('working', []))
+        not_working = item.get('notWorking', item.get('not_working', []))
+        conversion_impact = clean_text(item.get('conversionImpact', ''))
+        
+        fix_obj = item.get('fix', {})
+        if isinstance(fix_obj, dict):
+            quick_fix = clean_text(fix_obj.get('quickFix', ''))
+            fix_example = clean_text(fix_obj.get('example', ''))
+            fix_expected_impact = clean_text(fix_obj.get('expectedImpact', ''))
+        else:
+            quick_fix = clean_text(str(fix_obj) if fix_obj else '')
+            fix_example = ''
+            fix_expected_impact = ''
+        
+        # Calculate Height dynamically - More accurate estimation
+        chars_per_line = 85  # Approximate characters per line
+        lines_rat = max(1, int(len(rationale) / chars_per_line) + 1) if rationale else 0
+        lines_working = len(working_well) if working_well else 0
+        lines_not_working = len(not_working) if not_working else 0
+        lines_conv = max(1, int(len(conversion_impact) / chars_per_line) + 1) if conversion_impact else 0
+        lines_example = max(1, int(len(fix_example) / chars_per_line) + 1) if fix_example else 0
+        lines_expected = max(1, int(len(fix_expected_impact) / chars_per_line) + 1) if fix_expected_impact else 0
+        
+        # Action Plan height calculation (matches the actual box drawing logic)
+        if quick_fix and len(quick_fix) > 3:
+            text_width_mm = 170  # Available width inside box
+            chars_per_line_fix = int(text_width_mm / 2.8)  # Approx chars per line at 10pt
+            actual_lines_fix = max(1, int(len(quick_fix) / chars_per_line_fix) + 1)
+            fix_h = 6 + (actual_lines_fix * 5) + 3 + 3 + 2  # Label + text + top padding + bottom padding + spacing
+        else:
+            fix_h = 0
+        
+        # Calculate total height with proper spacing
+        header_h = 20  # Header + badges
+        rationale_h = (lines_rat * 5) + 3 if rationale else 0
+        working_h = (6 + (lines_working * 5) + 2) if working_well else 0  # Label + items + spacing
+        not_working_h = (6 + (lines_not_working * 5) + 2) if not_working else 0
+        conv_h = (6 + (lines_conv * 5) + 2) if conversion_impact else 0
+        example_h = (6 + (lines_example * 5) + 4) if fix_example else 0
+        expected_h = (6 + (lines_expected * 5) + 2) if fix_expected_impact else 0
+        
+        total_h = header_h + rationale_h + working_h + not_working_h + conv_h + fix_h + example_h + expected_h + 8  # Extra spacing to prevent overlap
+        
+        # Page Break Check
+        if self.get_y() + total_h > 270:
+            self.add_page()
+        
+        # 1. DRAW BACKGROUND BOX FIRST (Z-Order Fix)
+        y_start = self.get_y()
+        self.set_fill_color(252, 252, 252)  # Light Grey
+        self.set_draw_color(220, 220, 220)
+        self.rect(10, y_start, 190, total_h, 'DF')
+        
+        # 2. DRAW TEXT ON TOP
+        self.set_xy(15, y_start + 5)
+        
+        # Header & Badges - MATCH HTML
+        self.set_font('Helvetica', 'B', 12)
+        self.set_text_color(0, 0, 0)
+        self.cell(0, 8, name, ln=True)
+        
         self.set_x(15)
+        self.draw_badge(status, status)
+        self.set_x(self.get_x() + 2)
+        self.draw_badge(readable_impact, "Neutral")
+        self.ln(8)
         
-        # Print element name
-        name_width = self.get_string_width(element_name)
-        # Check if name fits, if not, use multi_cell
-        if name_width > self.usable_width - 80:  # Leave more space for longer impact text
-            self.multi_cell(self.usable_width - 80, 8, element_name, 0, 'L')
-            self.set_x(15)  # Reset after multi_cell
-        else:
-            self.cell(name_width, 8, element_name, ln=0)
-        
-        # Status/Impact Badge (black text - was colored, may be invisible)
-        badge_text = clean_text(f" [{status} | {readable_impact}]")
-        self.set_text_color(0, 0, 0)  # Force black text
-        self.set_font("Helvetica", "", 10)
-        badge_width = self.get_string_width(badge_text)
-        # Check if badge fits on same line
-        current_x = self.get_x()
-        if current_x + badge_width <= 195:  # Right margin (15mm + 180mm = 195mm)
-            self.cell(badge_width, 8, badge_text, ln=True)
-        else:
-            # Move to next line if badge doesn't fit
-            self.ln(8)
-            self.set_x(15)
-            self.cell(badge_width, 8, badge_text, ln=True)
-        self.set_text_color(0, 0, 0)  # Force black text
-        self.ln(2)
-        
-        # Rationale: Italics, Grey, 10pt
-        rationale = clean_text(str(item.get('rationale', '')))
+        # Rationale - MATCH HTML (italic, gray)
+        self.set_x(15)
+        self.set_font('Helvetica', 'I', 10)
+        self.set_text_color(60, 60, 60)
         if rationale:
-            self.set_x(15)  # Ensure left margin
-            self.set_font("Helvetica", "I", 10)
-            self.set_text_color(0, 0, 0)  # Force black text (was grey, may be invisible)
-            self.multi_cell(self.usable_width, 5, rationale, 0, 'L')
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.ln(3)
+            self.multi_cell(180, 5, rationale)
+        self.ln(3)
         
-        # The Findings: Split Layout
-        # What's Working (Black Text - was green, may be invisible)
-        working = item.get('working', item.get('workingWell', []))
-        if working:
-            self.set_x(15)  # Ensure left margin
-            self.set_font("Helvetica", "B", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(self.usable_width, 6, clean_text("What's Working:"), ln=True)
-            self.set_font("Helvetica", "", 9)
-            self.set_text_color(0, 0, 0)  # Force black text
-            for w in working[:5]:  # Limit to 5 items
-                self.set_x(15)  # Ensure left margin for each bullet
-                self.set_text_color(0, 0, 0)  # Force black text before each cell
+        # What's Working - MATCH HTML
+        if working_well and isinstance(working_well, list) and len(working_well) > 0:
+            self.set_x(15)
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(0, 100, 0)  # Green
+            self.cell(0, 6, "What's Working:", ln=True)
+            self.set_font('Helvetica', '', 9)
+            self.set_text_color(0, 0, 0)
+            for w in working_well[:5]:  # Limit to 5
+                self.set_x(15)
                 w_text = clean_text(str(w))
-                bullet_text = clean_text(f"  - {w_text}")
-                self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
+                self.multi_cell(180, 5, f"  - {w_text}", 0, 'L')
             self.ln(2)
         
-        # What's Broken (Black Text - was red, may be invisible)
-        not_working = item.get('not_working', item.get('notWorking', []))
-        if not_working:
-            self.set_x(15)  # Ensure left margin
-            self.set_font("Helvetica", "B", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(self.usable_width, 6, clean_text("What's Broken:"), ln=True)
-            self.set_font("Helvetica", "", 9)
-            self.set_text_color(0, 0, 0)  # Force black text
-            for nw in not_working[:5]:  # Limit to 5 items
-                self.set_x(15)  # Ensure left margin for each bullet
-                self.set_text_color(0, 0, 0)  # Force black text before each cell
+        # What's Broken - MATCH HTML
+        if not_working and isinstance(not_working, list) and len(not_working) > 0:
+            self.set_x(15)
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(150, 0, 0)  # Red
+            self.cell(0, 6, "What's Broken:", ln=True)
+            self.set_font('Helvetica', '', 9)
+            self.set_text_color(0, 0, 0)
+            for nw in not_working[:5]:  # Limit to 5
+                self.set_x(15)
                 nw_text = clean_text(str(nw))
-                bullet_text = clean_text(f"  - {nw_text}")
-                self.multi_cell(self.usable_width, 5, bullet_text, 0, 'L')
+                self.multi_cell(180, 5, f"  - {nw_text}", 0, 'L')
             self.ln(2)
         
-        # Conversion Impact
-        conversion_impact = item.get('conversionImpact', '')
+        # Conversion Impact - MATCH HTML
         if conversion_impact:
             self.set_x(15)
-            self.set_font("Helvetica", "B", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(self.usable_width, 6, clean_text("Conversion Impact:"), ln=True)
-            self.set_font("Helvetica", "", 9)
-            self.set_text_color(0, 0, 0)  # Force black text
-            impact_clean = clean_text(str(conversion_impact))
-            self.multi_cell(self.usable_width, 5, impact_clean, 0, 'L')
-            self.ln(2)
-        
-        # The Fix: Action Plan
-        fix_obj = item.get('fix', {})
-        fix_text = fix_obj.get('quickFix', '') if isinstance(fix_obj, dict) else str(fix_obj)
-        fix_example = fix_obj.get('example', '') if isinstance(fix_obj, dict) else ''
-        fix_expected_impact = fix_obj.get('expectedImpact', '') if isinstance(fix_obj, dict) else ''
-        
-        # CRITICAL FIX: Strip whitespace and check length
-        fix_text = fix_text.strip() if fix_text else ''
-        
-        if len(fix_text) > 5:  # Only draw if real text exists
-            self.ln(2)
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(0, 50, 150)  # Blue
+            self.cell(0, 6, "Conversion Impact:", ln=True)
+            self.set_font('Helvetica', '', 9)
+            self.set_text_color(0, 0, 0)
             self.set_x(15)
-            self.set_font("Helvetica", "B", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(self.usable_width, 8, clean_text("Action Plan:"), ln=True)
-            
-            self.set_font("Helvetica", "", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            cleaned_fix = clean_text(str(fix_text))
-            self.multi_cell(self.usable_width, 6, cleaned_fix, 0, 'L')
+            self.multi_cell(180, 5, conversion_impact, 0, 'L')
             self.ln(2)
         
-        # Fix Example
-        if fix_example and len(str(fix_example).strip()) > 5:
+        # Action Plan - MATCH HTML - Fixed margins and spacing to prevent overlapping
+        if quick_fix and len(quick_fix) > 3:
+            curr_y = self.get_y()
+            self.ln(2)  # Add spacing before action plan box
+            
+            # Calculate actual height needed for the text BEFORE drawing
+            text_width_mm = 170  # Available width inside box
+            chars_per_line = int(text_width_mm / 2.8)  # Approx chars per line at 10pt Helvetica
+            actual_lines = max(1, int(len(quick_fix) / chars_per_line) + 1)
+            
+            label_height = 6  # "Action Plan:" label
+            text_height = actual_lines * 5  # Text lines
+            top_padding = 3
+            bottom_padding = 3
+            fix_height = label_height + text_height + top_padding + bottom_padding
+            
+            # Draw background box with uniform margins
+            self.set_fill_color(255, 243, 205)  # Light yellow/orange (matching HTML action-plan)
+            self.rect(15, curr_y, 180, fix_height, 'F')
+            
+            # Draw text inside box with proper padding
+            self.set_xy(20, curr_y + top_padding)
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(0, 0, 0)
+            self.cell(0, 6, "Action Plan:", ln=True)
+            
+            self.set_x(20)
+            self.set_font('Helvetica', '', 10)
+            self.set_text_color(0, 0, 0)
+            self.multi_cell(170, 5, quick_fix, 0, 'L')
+            
+            # Move cursor to end of box with proper spacing (prevents overlap)
+            self.set_y(curr_y + fix_height + 3)  # 3mm bottom margin after box
+        
+        # Fix Example - MATCH HTML
+        if fix_example and len(fix_example) > 5:
             self.set_x(15)
-            self.set_font("Helvetica", "B", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(self.usable_width, 8, clean_text("Example:"), ln=True)
-            
-            self.set_font("Helvetica", "", 9)
-            self.set_text_color(0, 0, 0)  # Force black text
-            example_clean = clean_text(str(fix_example))
-            # Use border=1 to create a code-like box
-            self.multi_cell(self.usable_width, 5, example_clean, border=1, fill=False, align='L')
-            self.ln(2)
-        
-        # Expected Impact
-        if fix_expected_impact and len(str(fix_expected_impact).strip()) > 5:
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(0, 0, 0)
+            self.cell(0, 6, "Example:", ln=True)
+            self.set_font('Helvetica', '', 9)
+            self.set_text_color(0, 0, 0)
             self.set_x(15)
-            self.set_font("Helvetica", "B", 10)
-            self.set_text_color(0, 0, 0)  # Force black text
-            self.cell(self.usable_width, 8, clean_text("Expected Impact:"), ln=True)
-            
-            self.set_font("Helvetica", "", 9)
-            self.set_text_color(0, 0, 0)  # Force black text
-            expected_clean = clean_text(str(fix_expected_impact))
-            self.multi_cell(self.usable_width, 5, expected_clean, 0, 'L')
+            # Draw border box for example
+            example_y = self.get_y()
+            example_h = (lines_example * 5) + 4
+            self.set_draw_color(200, 200, 200)
+            self.rect(15, example_y, 180, example_h, 'D')
+            self.set_xy(18, example_y + 2)
+            self.multi_cell(174, 5, fix_example, 0, 'L')
             self.ln(2)
         
-        # Spacing: 5mm padding between cards
-        self.ln(5)
+        # Expected Impact - MATCH HTML
+        if fix_expected_impact and len(fix_expected_impact) > 5:
+            self.set_x(15)
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(0, 100, 0)  # Green
+            self.cell(0, 6, "Expected Impact:", ln=True)
+            self.set_font('Helvetica', '', 9)
+            self.set_text_color(0, 0, 0)
+            self.set_x(15)
+            self.multi_cell(180, 5, fix_expected_impact, 0, 'L')
+            self.ln(2)
+        
+        self.set_y(y_start + total_h + 5)
 
 def calculate_radar_from_sections(sections):
     """
@@ -4060,13 +4032,6 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
     try:
         pdf = PDFReport()
         
-        # DEBUG PAGE: Test if PDF engine works
-        pdf.add_page()
-        pdf.set_font("Helvetica", size=12)
-        pdf.set_text_color(0, 0, 0)  # Force Black
-        pdf.cell(0, 10, "DEBUG: If you can see this, the PDF engine works.", ln=True)
-        pdf.ln(5)
-        
         # Extract base URL if full URL provided
         base_url = None
         if site_url:
@@ -4083,14 +4048,18 @@ def generate_pdf_report(json_data, screenshot_path=None, site_url=None, radar_ch
             'scannedAt': time.strftime('%B %d, %Y')
         }
         
-        # Prepare roast data for executive summary
-        roast_summary = json_data.get('roast_summary') or json_data.get('headline_roast', 'Analysis completed')
+        # Prepare roast data for executive summary - MUST MATCH HTML REPORT EXACTLY
+        # HTML uses: data.get('roast_summary') or data.get('headline_roast') or data.get('overview', {}).get('executiveSummary', 'No summary available.')
+        roast_summary = json_data.get('roast_summary') or json_data.get('headline_roast') or json_data.get('overview', {}).get('executiveSummary', 'No summary available.')
         roast_data = {
+            'roast_summary': roast_summary,  # Match HTML key
+            'headline_roast': json_data.get('headline_roast', ''),
             'broadRoast': roast_summary,
             'hook': json_data.get('headline_roast', ''),
             'analysis': json_data.get('overview', {}).get('roastAnalysis', ''),
             'roastAnalysis': json_data.get('overview', {}).get('roastAnalysis', ''),
-            'executiveSummary': json_data.get('overview', {}).get('executiveSummary', '')
+            'executiveSummary': json_data.get('overview', {}).get('executiveSummary', ''),
+            'overview': json_data.get('overview', {})  # Include full overview for consistency
         }
         
         # Get overall score
@@ -4689,6 +4658,16 @@ def main():
                     
                     st.session_state.roast_data = roast_data
                     
+                    # Save scan to Firestore
+                    try:
+                        audit_url = st.session_state.get("audit_url", site_url)
+                        overall_score = roast_data.get("overall_score", roast_data.get("overview", {}).get("overallScore", 0))
+                        scan_id = save_scan(audit_url, roast_data, overall_score)
+                        if scan_id:
+                            safe_print(f"[INFO] Scan saved to Firestore with ID: {scan_id}")
+                    except Exception as e:
+                        safe_print(f"[WARNING] Failed to save scan to Firestore: {safe_error_message(str(e))}")
+                    
                     # Store first screenshot for PDF (use tempfile for cloud compatibility)
                     temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
                     os.makedirs(temp_dir, exist_ok=True)
@@ -4764,26 +4743,84 @@ def render_main_audit_dashboard(roast_data):
             else:
                 st.success("Verdict: EXCELLENT")
         with col_top3:
-            # HTML Report Download Button (PDF hidden due to blank PDF issue)
+            # Dual-button setup: PDF Download + HTML View
             try:
-                # Generate HTML Report
                 overall_score = roast_data.get("overall_score", 50)
                 site_url = st.session_state.get("audit_url", st.session_state.get("site_url", None))
-                html_report = generate_html_report(roast_data, overall_score, site_url=site_url)
                 
-                # Validate HTML report was generated
-                if not html_report or len(html_report) < 100:
-                    st.error("⚠️ HTML report generation failed. Report may be incomplete.")
-                    html_report = "<html><body><h1>Report Generation Error</h1><p>The HTML report could not be generated.</p></body></html>"
+                # Create two columns for buttons
+                col_pdf, col_html = st.columns(2)
                 
-                # Download HTML Report Button
-                st.download_button(
-                    label="📥 Download the Report",
-                    data=html_report.encode('utf-8'),
-                    file_name=f"siteroast_audit_{int(time.time())}.html",
-                    mime="text/html",
-                    use_container_width=True
-                )
+                with col_pdf:
+                    # PDF Download
+                    try:
+                        pdf_bytes = generate_pdf_report(
+                            roast_data,
+                            site_url=site_url,
+                            radar_chart_path=st.session_state.get("radar_chart_path"),
+                            stitched_heatmap_path=st.session_state.get("stitched_heatmap_path")
+                        )
+                        if pdf_bytes and len(pdf_bytes) > 100:
+                            st.download_button(
+                                "📄 Download PDF",
+                                pdf_bytes,
+                                f"audit_{int(time.time())}.pdf",
+                                "application/pdf",
+                                use_container_width=True
+                            )
+                        else:
+                            st.error("PDF generation failed")
+                    except Exception as e:
+                        st.error(f"PDF Error: {safe_error_message(str(e))}")
+                
+                with col_html:
+                    # HTML View in Browser - Use components.html for reliable JavaScript execution
+                    html_report = generate_html_report(roast_data, overall_score, site_url=site_url)
+                    if html_report and len(html_report) > 100:
+                        try:
+                            import streamlit.components.v1 as components
+                            
+                            # Encode HTML to base64 for embedding
+                            html_b64 = base64.b64encode(html_report.encode('utf-8')).decode('utf-8')
+                            
+                            # Create button with JavaScript that opens blob URL
+                            button_html = f"""
+                            <div style="width: 100%;">
+                                <button id="viewReportBtn" 
+                                        onclick="openReport()"
+                                        style="width:100%;padding:10px;background:#ff4b4b;color:white;border:none;border-radius:5px;font-weight:bold;cursor:pointer;">
+                                    🌏 View in Browser
+                                </button>
+                                <script>
+                                function openReport() {{
+                                    try {{
+                                        const htmlB64 = '{html_b64}';
+                                        const htmlContent = atob(htmlB64);
+                                        const blob = new Blob([htmlContent], {{ type: 'text/html;charset=utf-8' }});
+                                        const url = URL.createObjectURL(blob);
+                                        window.open(url, '_blank');
+                                    }} catch (e) {{
+                                        console.error('Error opening report:', e);
+                                        // Fallback to data URI
+                                        window.open('data:text/html;base64,{html_b64}', '_blank');
+                                    }}
+                                }}
+                                </script>
+                            </div>
+                            """
+                            components.html(button_html, height=50)
+                        except ImportError:
+                            # Fallback: Use direct anchor tag with data URI
+                            html_b64 = base64.b64encode(html_report.encode('utf-8')).decode('utf-8')
+                            html_link = f"""
+                            <a href="data:text/html;base64,{html_b64}" target="_blank" 
+                               style="display:inline-block;width:100%;padding:10px;background:#ff4b4b;color:white;border:none;border-radius:5px;font-weight:bold;cursor:pointer;text-align:center;text-decoration:none;">
+                               🌏 View in Browser
+                            </a>
+                            """
+                            st.markdown(html_link, unsafe_allow_html=True)
+                    else:
+                        st.error("HTML generation failed")
             except Exception as e:
                 error_msg = safe_error_message(e)
                 st.error(f"Error generating report: {error_msg}")

@@ -13,3 +13,4 @@ plotly
 kaleido
 opencv-python
 numpy
+firebase-admin
