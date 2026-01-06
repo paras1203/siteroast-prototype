@@ -20,7 +20,16 @@ import sys
 import pathlib
 import subprocess
 import base64
-from db_firebase import save_scan
+
+# Optional Firebase integration - gracefully handle if module doesn't exist
+try:
+    from db_firebase import save_scan
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
+    def save_scan(*args, **kwargs):
+        """Placeholder function when Firebase is not available"""
+        return None
 
 # CLOUD FIX: Install Playwright browsers automatically on startup
 try:
@@ -4658,15 +4667,16 @@ def main():
                     
                     st.session_state.roast_data = roast_data
                     
-                    # Save scan to Firestore
-                    try:
-                        audit_url = st.session_state.get("audit_url", site_url)
-                        overall_score = roast_data.get("overall_score", roast_data.get("overview", {}).get("overallScore", 0))
-                        scan_id = save_scan(audit_url, roast_data, overall_score)
-                        if scan_id:
-                            safe_print(f"[INFO] Scan saved to Firestore with ID: {scan_id}")
-                    except Exception as e:
-                        safe_print(f"[WARNING] Failed to save scan to Firestore: {safe_error_message(str(e))}")
+                    # Save scan to Firestore (optional - only if Firebase is available)
+                    if FIREBASE_AVAILABLE:
+                        try:
+                            audit_url = st.session_state.get("audit_url", site_url)
+                            overall_score = roast_data.get("overall_score", roast_data.get("overview", {}).get("overallScore", 0))
+                            scan_id = save_scan(audit_url, roast_data, overall_score)
+                            if scan_id:
+                                safe_print(f"[INFO] Scan saved to Firestore with ID: {scan_id}")
+                        except Exception as e:
+                            safe_print(f"[WARNING] Failed to save scan to Firestore: {safe_error_message(str(e))}")
                     
                     # Store first screenshot for PDF (use tempfile for cloud compatibility)
                     temp_dir = os.path.join(tempfile.gettempdir(), "siteroast_temp")
